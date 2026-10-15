@@ -64,6 +64,7 @@ frame.on("ready", () => {
         let currentWord = words[wordIndex];
         let targetTextRefs = [];
         let targetBoxRefs = [];
+        let targetConjunctAnimationRunning = false;
         let processingLetterRef;
         let processingLetterBoxRef;
         let processingLetterSizeRef = 0;
@@ -195,6 +196,20 @@ frame.on("ready", () => {
                 const nextStep = currentWord.targetSlots[stepIndex];
                 if (!nextStep) return;
 
+                const noProcessingPosition = nextStep.processingPosition === ""
+                    || nextStep.processingPosition == null;
+                const noTool = nextStep.tool === "" || nextStep.tool == null;
+                if (noProcessingPosition && noTool) {
+                    firstLetter.visible = false;
+                    secondLetter.visible = false;
+                    firstLetterMask.visible = false;
+                    secondLetterMask.visible = false;
+                    updateProcessingLetter(firstLetter, secondLetter, processingLetterRef);
+                    stage.update();
+                    animateCompleteConjunct(nextStep, () => { stepIndex += 1; });
+                    return;
+                }
+
                 createjs.Tween.removeTweens(firstLetter);
                 createjs.Tween.removeTweens(secondLetter);
                 createjs.Tween.removeTweens(firstLetterMask);
@@ -296,27 +311,54 @@ frame.on("ready", () => {
                         - firstLetter.regY * firstLetter.scaleY;
                     const moveX = targetCenterX - currentVisualCenterX;
                     const moveY = targetCenterY - currentVisualCenterY;
-                    const movingToTarget = [firstLetter, secondLetter, firstLetterMask, secondLetterMask];
-
-                    // Move the clipped letter pieces and masks together, then fade
-                    // both letter pieces during the flight to the target slot.
-                    movingToTarget.forEach(part => {
-                        createjs.Tween.get(part)
-                            .to({x: part.x + moveX, y: part.y + moveY}, 500)
-                            .on("change", () => stage.update());
-                    });
-                    const fadeTweens = [firstLetter, secondLetter].map(letter =>
-                        createjs.Tween.get(letter)
-                            .to({alpha: 0}, 500)
-                            .on("change", () => stage.update())
-                    );
-                    fadeTweens[0].call(() => {
+                    let flightFinished = false;
+                    const finishFlight = () => {
+                        if (flightFinished) return;
+                        flightFinished = true;
                         firstLetter.visible = false;
                         secondLetter.visible = false;
                         firstLetterMask.visible = false;
                         secondLetterMask.visible = false;
                         stage.update();
+                        console.log("[processedLetter] flight finished; starting target conjunct", {
+                            stepIndex,
+                            targetPositions: currentWord.targetSlots[stepIndex].targetPositions,
+                            targetConjunct: currentWord.targetSlots[stepIndex].targetConjunct
+                        });
+                        animateTargetPositionsToConjunct(
+                            currentWord.targetSlots[stepIndex],
+                            advanceToNextProcessingStep
+                        );
+                    };
+
+                    // Move masks with the letters. Combine each letter's movement
+                    // and fade into one tween so both effects happen simultaneously.
+                    [firstLetterMask, secondLetterMask].forEach(part => {
+                        createjs.Tween.get(part)
+                            .to({x: part.x + moveX, y: part.y + moveY}, 500)
+                            .on("change", () => stage.update());
                     });
+                    const firstLetterFlightTween = createjs.Tween.get(firstLetter)
+                        .to({
+                            x: firstLetter.x + moveX,
+                            y: firstLetter.y + moveY,
+                            alpha: 0
+                        }, 500)
+                        .on("change", () => stage.update());
+                    createjs.Tween.get(secondLetter)
+                        .to({
+                            x: secondLetter.x + moveX,
+                            y: secondLetter.y + moveY,
+                            alpha: 0
+                        }, 500)
+                        .on("change", () => stage.update());
+                    firstLetterFlightTween.call(finishFlight);
+                    window.setTimeout(() => {
+                        if (!flightFinished) {
+                            console.warn("[processedLetter] using timed completion fallback");
+                            finishFlight();
+                        }
+                    }, 550);
                 };
 
                 const shrinkAroundCutLines = () => {
@@ -433,7 +475,16 @@ frame.on("ready", () => {
         targetBarInteraction.cursor = "pointer";
         targetBarInteraction.on("click", () => {
             const step = currentWord.targetSlots[stepIndex];
-            if (step) animateTargetPositionsToConjunct(step);
+            console.log("[targetConjunct] targetbar clicked", {
+                stepIndex,
+                targetPositions: step && step.targetPositions,
+                targetConjunct: step && step.targetConjunct
+            });
+            if (!step) return;
+            const isCompleteStep = (step.processingPosition === "" || step.processingPosition == null)
+                && (step.tool === "" || step.tool == null);
+            if (isCompleteStep) animateCompleteConjunct(step);
+            else animateTargetPositionsToConjunct(step);
         });
         stage.addChild(targetBarInteraction);
 
@@ -449,87 +500,171 @@ frame.on("ready", () => {
         }
 
         function animateTargetPositionsToConjunct(step, onComplete) {
-            const positions = step.targetPositions.map(Number);
-            const targetBoxes = positions
-                .map(position => targetBoxRefs[position - 1])
-                .filter(Boolean);
-            if (!targetBoxes.length) {
+            animateConjunctPositions(step, onComplete, false);
+        }
+
+        function animateCompleteConjunct(step, onComplete) {
+            animateConjunctPositions(step, onComplete, true);
+        }
+
+        function animateConjunctPositions(step, onComplete, completeMode) {
+            console.log("[targetConjunct] animation started", {
+                targetPositions: step && step.targetPositions,
+                targetConjunct: step && step.targetConjunct
+            });
+            if (targetConjunctAnimationRunning) return;
+            targetConjunctAnimationRunning = true;
+
+            const processingPositionIsEmpty = step.processingPosition === ""
+                || step.processingPosition == null;
+            const toolIsEmpty = step.tool === "" || step.tool == null;
+            const isFinalStep = completeMode || (processingPositionIsEmpty && toolIsEmpty);
+
+            const positions = [...new Set((step.targetPositions || [])
+                .map(Number)
+                .filter(position => Number.isInteger(position) && position > 0 && position <= targetBoxRefs.length))]
+                .sort((a, b) => a - b);
+            if (!positions.length) {
+                targetConjunctAnimationRunning = false;
                 if (onComplete) onComplete();
                 return;
             }
 
-            const firstPosition = Math.min(...positions);
-            const lastPosition = Math.max(...positions);
-            const firstSlotX = letterStartX + (firstPosition - 1) * (letterWidth + letterGap);
-            const lastSlotX = letterStartX + (lastPosition - 1) * (letterWidth + letterGap);
-            const centerX = (firstSlotX + lastSlotX + letterWidth) / 2;
+            const firstPosition = positions[0];
+            const lastPosition = positions[positions.length - 1];
+            const left = letterStartX + (firstPosition - 1) * (letterWidth + letterGap);
+            const right = letterStartX + (lastPosition - 1) * (letterWidth + letterGap) + letterWidth;
+            const processingPosition = Number(step.processingPosition);
+            const hasProcessingPosition = Number.isInteger(processingPosition)
+                && processingPosition > 0
+                && processingPosition <= targetBoxRefs.length;
+            const centerX = isFinalStep
+                ? letterStartX + (firstPosition - 1) * (letterWidth + letterGap) + letterWidth / 2
+                : hasProcessingPosition
+                    ? letterStartX + (processingPosition - 1) * (letterWidth + letterGap) + letterWidth / 2
+                    : (left + right) / 2;
             const centerY = letterY + letterHeight / 2;
             const collapseTargets = [];
 
             positions.forEach(position => {
+                const slotX = letterStartX + (position - 1) * (letterWidth + letterGap);
                 const textRef = targetTextRefs[position - 1];
                 const box = targetBoxRefs[position - 1];
-                const slotX = letterStartX + (position - 1) * (letterWidth + letterGap);
                 if (textRef) {
                     [textRef.textOutline, textRef.textFill].forEach(text => {
+                        createjs.Tween.removeTweens(text);
                         text.x = slotX + letterWidth / 2;
                         text.y = centerY;
                         text.scaleX = 1;
                         text.scaleY = 1;
                         text.alpha = 1;
+                        text.visible = true;
+                        collapseTargets.push(text);
                     });
-                    collapseTargets.push(textRef.textOutline, textRef.textFill);
                 }
                 if (box) {
+                    createjs.Tween.removeTweens(box);
                     box.regX = letterWidth / 2;
                     box.regY = letterHeight / 2;
                     box.x = slotX + letterWidth / 2;
                     box.y = centerY;
                     box.scaleX = 1;
                     box.scaleY = 1;
+                    box.visible = true;
                     collapseTargets.push(box);
                 }
             });
 
+            let remaining = collapseTargets.length;
+            let finished = false;
             const finishCollapse = () => {
-                collapseTargets.forEach(target => { target.visible = false; });
+                if (finished) return;
+                finished = true;
+                console.log("[targetConjunct] all collapse tweens finished", {
+                    targetConjunct: step.targetConjunct,
+                    replacementPosition: firstPosition
+                });
+                collapseTargets.forEach(target => {
+                    createjs.Tween.removeTweens(target);
+                    target.visible = false;
+                });
 
-                const replacementPosition = positions[0];
-                const replacementText = targetTextRefs[replacementPosition - 1];
-                if (replacementText) {
-                    replacementText.setText(step.targetConjunct);
-                    replacementText.textOutline.x = letterStartX
-                        + (replacementPosition - 1) * (letterWidth + letterGap) + letterWidth / 2;
-                    replacementText.textFill.x = replacementText.textOutline.x;
-                    replacementText.textOutline.y = centerY;
-                    replacementText.textFill.y = centerY;
+                const replacementX = isFinalStep
+                    ? targetBarX + targetBarWidth / 2
+                    : letterStartX + (firstPosition - 1) * (letterWidth + letterGap) + letterWidth / 2;
+                const replacementText = addOutlinedText(
+                    step.targetConjunct || "",
+                    "bold 50px Arial",
+                    replacementX,
+                    centerY
+                );
+                targetTextRefs[firstPosition - 1] = replacementText;
+                if (isFinalStep) {
+                    let displayFinished = false;
+                    const finishDisplay = () => {
+                        if (displayFinished) return;
+                        displayFinished = true;
+                        targetConjunctAnimationRunning = false;
+                        stage.update();
+                        if (onComplete) onComplete();
+                    };
                     [replacementText.textOutline, replacementText.textFill].forEach(text => {
-                        text.scaleX = 1;
-                        text.scaleY = 1;
-                        text.alpha = 1;
-                        text.visible = true;
+                        text.alpha = 0;
                     });
-                    stage.addChild(replacementText.textOutline, replacementText.textFill);
+                    createjs.Tween.get(replacementText.textOutline)
+                        .to({alpha: 1}, 350)
+                        .on("change", () => stage.update());
+                    const fillTween = createjs.Tween.get(replacementText.textFill)
+                        .to({alpha: 1}, 350)
+                        .on("change", () => stage.update());
+                    fillTween.call(finishDisplay);
+                    window.setTimeout(finishDisplay, 400);
+                    stage.update();
+                    return;
                 }
+                console.log("[targetConjunct] replacement created", {
+                    text: replacementText.textFill.text,
+                    x: replacementText.textFill.x,
+                    y: replacementText.textFill.y,
+                    visible: replacementText.textFill.visible,
+                    stageChildCount: stage.numChildren
+                });
                 stage.update();
+                targetConjunctAnimationRunning = false;
                 if (onComplete) onComplete();
             };
 
-            let remainingCollapseTweens = collapseTargets.length;
+            if (!remaining) {
+                finishCollapse();
+                return;
+            }
+
             collapseTargets.forEach(target => {
-                target.visible = true;
                 createjs.Tween.get(target)
-                    .to({x: centerX, y: centerY, scaleX: 0, scaleY: 0}, 400)
+                    .to({x: centerX, y: centerY, scaleX: 0, scaleY: 0, alpha: 0}, 400)
                     .on("change", () => stage.update())
                     .call(() => {
-                        remainingCollapseTweens -= 1;
-                        if (remainingCollapseTweens === 0) finishCollapse();
+                        remaining -= 1;
+                        console.log("[targetConjunct] collapse tween completed", {
+                            remaining,
+                            total: collapseTargets.length
+                        });
+                        if (remaining === 0) finishCollapse();
                     });
             });
 
-            if (!remainingCollapseTweens) {
-                finishCollapse();
-            }
+            // Keep the replacement from depending exclusively on CreateJS
+            // completion callbacks: the collapse visuals can finish even when a
+            // callback is missed (for example, after another tween was removed).
+            window.setTimeout(() => {
+                if (!finished) {
+                    console.warn("[targetConjunct] using timed completion fallback", {
+                        remaining,
+                        targetConjunct: step.targetConjunct
+                    });
+                    finishCollapse();
+                }
+            }, 450);
         }
 
         // ==========================================
