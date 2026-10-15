@@ -31,7 +31,41 @@ const frame = new Frame({
 });
 
 frame.on("ready", () => {
+    Promise.all([
+        new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+            image.src = "assets/targetBackground.png";
+        }),
+        new Promise((resolve, reject) => {
+            const image = new Image();
+            image.onload = () => resolve(image);
+            image.onerror = reject;
+            image.src = "assets/toolBackground.png";
+        })
+    ]).then(([targetBarImage, toolFrameImage]) => {
         const stage = frame.stage;
+
+        // Main layout: left two-thirds for the game area, right one-third for the info area.
+        const leftAreaWidth = frame.width * 2 / 3;
+        const rightAreaX = leftAreaWidth;
+        const rightAreaWidth = frame.width - leftAreaWidth;
+
+        const targetBarImageWidth = targetBarImage.naturalWidth || targetBarImage.width;
+        const targetBarImageHeight = targetBarImage.naturalHeight || targetBarImage.height;
+        const targetBarTargetWidth = leftAreaWidth * 0.9;
+        const targetBarY = 5;
+        const targetBarScaleX = targetBarTargetWidth / targetBarImageWidth;
+        const targetBarScaleY = 150 / targetBarImageHeight;
+        const targetBarWidth = targetBarImageWidth * targetBarScaleX;
+        const targetBarHeight = targetBarImageHeight * targetBarScaleY;
+        const targetBarX = (leftAreaWidth - targetBarWidth) / 2;
+
+        const toolsAreaX = (leftAreaWidth - leftAreaWidth * 0.98) / 2;
+        const toolsAreaWidth = leftAreaWidth * 0.98;
+        const toolsAreaHeight = 150;
+        const toolsAreaY = frame.height - toolsAreaHeight;
 
         // Solid light-yellow text with a black outline.
         const addOutlinedText = (text, font, x, y) => {
@@ -66,11 +100,11 @@ frame.on("ready", () => {
             // Scale the image and align it horizontally and with the bottom edge of the canvas.
             forgingStation.scaleX = 0.6;
             forgingStation.scaleY = 0.6;
-            forgingStation.x = frame.width / 2 - forgingStation.image.width * 0.55;
+            const forgingStationDisplayWidth = forgingStation.image.width * forgingStation.scaleX;
+            forgingStation.x = toolsAreaX + toolsAreaWidth / 2 - forgingStationDisplayWidth / 2;
             forgingStation.y = frame.height - forgingStation.image.height * 0.45;
 
             // Add a temporary processing letter frame above the forging station.
-            const forgingStationDisplayWidth = forgingStation.image.width * forgingStation.scaleX;
             const processingLetterSize = forgingStationDisplayWidth * 0.8;
             const processingLetterBox = new createjs.Shape();
             processingLetterBox.graphics
@@ -102,15 +136,11 @@ frame.on("ready", () => {
         // 1. Top Target Bar area
         // ==========================================
         // Stretch targetBackground.png to fill the existing Target Bar dimensions.
-        const targetBarX = 30;
-        const targetBarY = 5;
-        const targetBarWidth = 750;
-        const targetBarHeight = 150;
         const targetBar = new createjs.Bitmap("assets/targetBackground.png");
         targetBar.x = targetBarX;
         targetBar.y = targetBarY;
-        targetBar.scaleX = targetBarWidth / 1587;
-        targetBar.scaleY = targetBarHeight / 597;
+        targetBar.scaleX = targetBarScaleX;
+        targetBar.scaleY = targetBarScaleY;
         targetBar.image.onload = () => stage.update();
         stage.addChild(targetBar);
         
@@ -148,39 +178,40 @@ frame.on("ready", () => {
         // ==========================================
         // 2. Bottom Tools Area
         // ==========================================
-        const toolsAreaY = frame.height - 150;
-
         // Transparent tool area with a white outline marking its position.
-        new Rectangle(720, 150, null, "#FFFFFF", 2)
-            .loc(50, toolsAreaY);
+        new Rectangle(toolsAreaWidth, toolsAreaHeight, null, "#FFFFFF", 2)
+            .loc(toolsAreaX, toolsAreaY);
 
         new Label({text: "Tools Area", size: 24, color: "#FFFFFF"})
             .loc(70, toolsAreaY + 15);
 
         const toolCount = 5;
-        const toolsAreaX = 50;
-        const toolsAreaWidth = 720;
-        const toolsAreaHeight = 150;
-        const toolGap = 4;
+        const toolGap = 0;
         const toolTop = toolsAreaY + toolsAreaHeight * 0.25;
-        const toolHeight = toolsAreaHeight * 0.7;
-        const imageAspect = 496 / 357;
-        const toolWidth = Math.min(
-            toolHeight * imageAspect,
-            (toolsAreaWidth - toolGap * (toolCount - 1)) / toolCount
+        const toolTargetHeight = toolsAreaHeight * 0.7;
+        const toolFrameImageWidth = toolFrameImage.naturalWidth || toolFrameImage.width;
+        const toolFrameImageHeight = toolFrameImage.naturalHeight || toolFrameImage.height;
+        const baseToolScale = Math.min(
+            toolTargetHeight / toolFrameImageHeight,
+            toolsAreaWidth / (toolCount * toolFrameImageWidth + toolGap * (toolCount - 1))
         );
-        const actualToolHeight = toolWidth / imageAspect;
+        const toolFrameScale = 1.2;
+        const toolScale = baseToolScale * toolFrameScale;
+        const toolWidth = toolFrameImageWidth * toolScale;
+        const actualToolHeight = toolFrameImageHeight * toolScale;
+        const toolGroupWidth = toolWidth * toolCount + toolGap * (toolCount - 1);
+        const toolStartX = toolsAreaX + (toolsAreaWidth - toolGroupWidth) / 2;
         // Tool order: axe, scissors, gem, hook, hammer.
         const toolAssets = ["axe.png", "scissors.png", "gem.png", "hook.png", "hammer.png"];
         const toolNames = ["Axe", "Scissors", "Gem", "Hook", "Hammer"];
         const toolCenterY = toolTop; // Align the tool center with the top edge of its Tool frame.
 
         for (let i = 0; i < toolCount; i++) {
-            const toolX = toolsAreaX + i * (toolWidth + toolGap);
+            const toolX = toolStartX + i * (toolWidth + toolGap);
             // Keep the Tool frame fixed; do not add drag events to it.
             let toolBox = new createjs.Bitmap("assets/toolBackground.png");
-            toolBox.scaleX = toolWidth / 496;
-            toolBox.scaleY = actualToolHeight / 357;
+            toolBox.scaleX = toolWidth / toolFrameImageWidth;
+            toolBox.scaleY = actualToolHeight / toolFrameImageHeight;
             toolBox.x = toolX;
             toolBox.y = toolTop;
             toolBox.image.onload = () => stage.update();
@@ -212,8 +243,7 @@ frame.on("ready", () => {
             stage.addChild(tool);
 
             // Center the tool name and effect text in the lower text area.
-            const toolTextOffsetX = -6;
-            const toolTextCenterX = toolBox.x + toolWidth / 2 + toolTextOffsetX;
+            const toolTextCenterX = toolBox.x + toolWidth / 2 ;
             const toolTextAreaTop = toolTop + actualToolHeight * 0.55;
             const toolTextAreaBottom = toolTop + actualToolHeight - 8;
             const toolTextCenterY = (toolTextAreaTop + toolTextAreaBottom) / 2;
@@ -222,13 +252,13 @@ frame.on("ready", () => {
                 toolNames[i],
                 "bold 21px Arial",
                 toolTextCenterX,
-                toolTextCenterY - 14
+                toolTextCenterY - 20
             );
             addOutlinedText(
                 "tool effect",
                 "16px Arial",
                 toolTextCenterX,
-                toolTextCenterY + 14
+                toolTextCenterY + 5
             );
 
             // The tool can be dragged, then returns to its original position on release.
@@ -255,10 +285,10 @@ frame.on("ready", () => {
         // ==========================================
         // 3. Right Info Area
         // ==========================================
-        const infoAreaX = 820;
-        const infoAreaWidth = 340;
+        const infoAreaWidth = rightAreaWidth * 0.85;
+        const infoAreaX = rightAreaX + (rightAreaWidth - infoAreaWidth) / 2;
         const infoAreaHeight = 620;
-        const infoSectionWidth = infoAreaWidth * 0.90;
+        const infoSectionWidth = infoAreaWidth * 0.9;
         const infoSectionX = infoAreaX + (infoAreaWidth - infoSectionWidth) / 2;
         const infoArea = new createjs.Shape();
         infoArea.graphics
@@ -314,8 +344,9 @@ frame.on("ready", () => {
             .loc(infoSectionX, 150);
 
         // Right-align all status text in two columns.
-        const statusLabelX = 1005;
-        const statusValueX = 1115;
+        const generalStatusOffsetX = 15;
+        const statusLabelX = 1005 + generalStatusOffsetX;
+        const statusValueX = 1115 + generalStatusOffsetX;
         const addStatusText = (text, font, x, y) => {
             const statusText = new createjs.Text(text, font, "#FFFFFF");
             statusText.textAlign = "right";
@@ -337,7 +368,7 @@ frame.on("ready", () => {
             .setStrokeStyle(2)
             .beginStroke("#000000")
             .drawRoundRect(0, 0, 80, 32, 8);
-        hintButton.x = 855;
+        hintButton.x = 855 + generalStatusOffsetX;
         hintButton.y = 237;
         hintButton.cursor = "pointer";
         stage.addChild(hintButton);
@@ -420,6 +451,7 @@ frame.on("ready", () => {
         });
 
         stage.update(); // Refresh the stage.
+    });
 });
 </script>
 </head>
