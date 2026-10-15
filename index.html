@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="utf-8" />
-<title>Sanskrit Smith - UI Layout</title>
+<title>Sanskrit Smith</title>
 
 <!-- Standard ZIM 016 setup: ZIM depends on CreateJS -->
 <script src="https://zimjs.org/cdn/1.5/createjs.js"></script>
@@ -46,6 +46,7 @@ frame.on("ready", () => {
         })
     ]).then(([targetBarImage, toolFrameImage]) => {
         const stage = frame.stage;
+        stage.enableMouseOver();
 
         // Main layout: left two-thirds for the game area, right one-third for the info area.
         const leftAreaWidth = frame.width * 2 / 3;
@@ -118,16 +119,87 @@ frame.on("ready", () => {
             processingLetterBox.y = forgingStation.y - processingLetterSize * 0.7;
             stage.addChild(processingLetterBox);
 
-            const processingLetterLabel = new createjs.Text(
-                "processing letter",
-                "bold 20px Arial",
-                "#FFFFFF"
-            );
-            processingLetterLabel.textAlign = "center";
-            processingLetterLabel.textBaseline = "middle";
-            processingLetterLabel.x = processingLetterBox.x + processingLetterSize / 2;
-            processingLetterLabel.y = processingLetterBox.y + processingLetterSize / 2;
-            stage.addChild(processingLetterLabel);
+            // Keep the character still and hide a configurable part on the right.
+            const letterFont = "bold 400px 'Noto Sans Devanagari', 'Nirmala UI', Arial";
+            const letterCenterX = processingLetterSize / 2;
+            const letterCenterY = processingLetterSize / 2;
+            const hiddenRightRatio = 0.45;
+
+            const firstLetterMask = new createjs.Shape();
+            firstLetterMask.graphics
+                .beginFill("#000000")
+                .drawRect(0, 0, processingLetterSize, processingLetterSize);
+            firstLetterMask.x = processingLetterBox.x;
+            firstLetterMask.y = processingLetterBox.y;
+
+            const processingLetter = new createjs.Text("", letterFont, "#FFFFFF");
+            const firstLetter = processingLetter.clone();
+            firstLetter.textAlign = "center";
+            firstLetter.textBaseline = "middle";
+            firstLetter.x = processingLetterBox.x + letterCenterX;
+            firstLetter.y = processingLetterBox.y + letterCenterY;
+            firstLetter.mask = firstLetterMask;
+            stage.addChild(firstLetter);
+
+            const secondLetterMask = new createjs.Shape();
+            secondLetterMask.graphics
+                .beginFill("#000000")
+                .drawRect(0, 0, processingLetterSize, processingLetterSize);
+            secondLetterMask.x = processingLetterBox.x;
+            secondLetterMask.y = processingLetterBox.y;
+
+            const secondLetter = processingLetter.clone();
+            secondLetter.textAlign = "center";
+            secondLetter.textBaseline = "middle";
+            secondLetter.x = processingLetterBox.x + letterCenterX;
+            secondLetter.y = processingLetterBox.y + letterCenterY;
+            secondLetter.mask = secondLetterMask;
+            stage.addChild(secondLetter);
+
+            const processingLetterInteraction = new createjs.Shape();
+            processingLetterInteraction.graphics
+                .beginFill("rgba(255, 255, 255, 0.01)")
+                .drawRect(0, 0, processingLetterSize, processingLetterSize);
+            processingLetterInteraction.x = processingLetterBox.x;
+            processingLetterInteraction.y = processingLetterBox.y;
+            processingLetterInteraction.cursor = "pointer";
+            processingLetterInteraction.on("click", () => {
+                const visibleLeftRatio = 1 - hiddenRightRatio;
+
+                createjs.Tween.removeTweens(firstLetterMask);
+                createjs.Tween.removeTweens(secondLetterMask);
+                createjs.Tween.removeTweens(secondLetter);
+
+                firstLetterMask.x = processingLetterBox.x;
+                firstLetterMask.scaleX = 1;
+                secondLetterMask.x = processingLetterBox.x;
+                secondLetterMask.scaleX = 1;
+                secondLetter.x = processingLetterBox.x + letterCenterX;
+                secondLetter.alpha = 1;
+
+                // Hide both parts immediately when the interaction starts.
+                firstLetterMask.scaleX = visibleLeftRatio;
+                secondLetterMask.x = processingLetterBox.x + processingLetterSize * visibleLeftRatio;
+                secondLetterMask.scaleX = hiddenRightRatio;
+                stage.update();
+
+                // Only the second character slides right and fades out.
+                const secondLetterSlideDistance = processingLetterSize * 0.35;
+                createjs.Tween.get(secondLetterMask)
+                    .to({
+                        x: processingLetterBox.x
+                            + processingLetterSize * visibleLeftRatio
+                            + secondLetterSlideDistance
+                    }, 500)
+                    .on("change", () => stage.update());
+                createjs.Tween.get(secondLetter)
+                    .to({
+                        x: processingLetterBox.x + letterCenterX + secondLetterSlideDistance,
+                        alpha: 0
+                    }, 500)
+                    .on("change", () => stage.update());
+            });
+            stage.addChild(processingLetterInteraction);
 
             stage.update();
         };
@@ -265,6 +337,22 @@ frame.on("ready", () => {
             let offsetX = 0;
             let offsetY = 0;
             tool.cursor = "pointer";
+            tool.on("mouseover", () => {
+                if (typeof tool.glow === "function") {
+                    tool.glow("#FFD700", 50);
+                } else {
+                    tool.shadow = new createjs.Shadow("#FFD700", 0, 0, 20);
+                }
+                stage.update();
+            });
+            tool.on("mouseout", () => {
+                if (typeof tool.noGlow === "function") {
+                    tool.noGlow();
+                } else {
+                    tool.shadow = null;
+                }
+                stage.update();
+            });
             tool.on("mousedown", (event) => {
                 offsetX = tool.x - event.stageX;
                 offsetY = tool.y - event.stageY;
@@ -303,7 +391,7 @@ frame.on("ready", () => {
         infoArea.y = 40;
         stage.addChild(infoArea);
 
-        const infoTitle = new createjs.Text("Sanskrit Smith", "bold 30px Arial", "#FFFFFF");
+        const infoTitle = new createjs.Text("Sanskrit Smith", "bold 40px Arial", "#FFFFFF");
         infoTitle.textAlign = "left";
         infoTitle.textBaseline = "middle";
         infoTitle.x = 840;
