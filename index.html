@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Sanskrit Smith - UI Layout</title>
+
+<!-- Standard ZIM 016 setup: ZIM depends on CreateJS -->
+<script src="https://zimjs.org/cdn/1.5/createjs.js"></script>
+<script src="https://zimjs.org/cdn/016/zim_min.js"></script>
+
+<script>
+// Define the Frame using the current ZIM syntax.
+const frame = new Frame({
+    scaling: "fit",
+    width: 1200,
+    height: 700,
+    color: "#555555",
+    outerColor: "#333333",
+    assets: [
+        "background.jpeg",
+        "forgingStation.png",
+        "toolBackground.png",
+        "targetBackground.png",
+        "axe.png",
+        "gem.png",
+        "hammer.png",
+        "hook.png",
+        "scissors.png"
+    ],
+    path: "assets/"
+});
+
+frame.on("ready", () => {
+        const stage = frame.stage;
+
+        // Solid light-yellow text with a black outline.
+        const addOutlinedText = (text, font, x, y) => {
+            const textOutline = new createjs.Text(text, font, "#000000");
+            textOutline.textAlign = "center";
+            textOutline.textBaseline = "middle";
+            textOutline.outline = 3;
+            textOutline.x = x;
+            textOutline.y = y;
+            stage.addChild(textOutline);
+
+            const textFill = new createjs.Text(text, font, "#FFF2A8");
+            textFill.textAlign = "center";
+            textFill.textBaseline = "middle";
+            textFill.x = x;
+            textFill.y = y;
+            stage.addChild(textFill);
+        };
+
+        // Preserve the background aspect ratio and crop from the center to avoid distortion.
+        const background = new Pic("background.jpeg")
+            .addTo(stage)
+            .scaleTo(frame.width, frame.height, "outside")
+            .center();
+        background.x -= frame.width * 0.1;
+
+        // Keep the forging station at its current scale, center it horizontally, and align it with the bottom of the canvas.
+        // Add it before the UI so the Tools Area appears above it.
+        const forgingStation = new createjs.Bitmap("assets/forgingStation.png");
+        stage.addChildAt(forgingStation, 1);
+        forgingStation.image.onload = () => {
+            // Scale the image and align it horizontally and with the bottom edge of the canvas.
+            forgingStation.scaleX = 0.6;
+            forgingStation.scaleY = 0.6;
+            forgingStation.x = frame.width / 2 - forgingStation.image.width * 0.55;
+            forgingStation.y = frame.height - forgingStation.image.height * 0.45;
+
+            // Add a temporary processing letter frame above the forging station.
+            const forgingStationDisplayWidth = forgingStation.image.width * forgingStation.scaleX;
+            const processingLetterSize = forgingStationDisplayWidth * 0.8;
+            const processingLetterBox = new createjs.Shape();
+            processingLetterBox.graphics
+                .setStrokeStyle(4)
+                .beginStroke("#FFFFFF")
+                .drawRect(0, 0, processingLetterSize, processingLetterSize);
+            processingLetterBox.x = forgingStation.x
+                + forgingStationDisplayWidth / 2
+                - processingLetterSize / 2;
+            // Overlap the forging station by 25% of the square's height.
+            processingLetterBox.y = forgingStation.y - processingLetterSize * 0.7;
+            stage.addChild(processingLetterBox);
+
+            const processingLetterLabel = new createjs.Text(
+                "processing letter",
+                "bold 20px Arial",
+                "#FFFFFF"
+            );
+            processingLetterLabel.textAlign = "center";
+            processingLetterLabel.textBaseline = "middle";
+            processingLetterLabel.x = processingLetterBox.x + processingLetterSize / 2;
+            processingLetterLabel.y = processingLetterBox.y + processingLetterSize / 2;
+            stage.addChild(processingLetterLabel);
+
+            stage.update();
+        };
+
+        // ==========================================
+        // 1. Top Target Bar area
+        // ==========================================
+        // Stretch targetBackground.png to fill the existing Target Bar dimensions.
+        const targetBarX = 30;
+        const targetBarY = 5;
+        const targetBarWidth = 750;
+        const targetBarHeight = 150;
+        const targetBar = new createjs.Bitmap("assets/targetBackground.png");
+        targetBar.x = targetBarX;
+        targetBar.y = targetBarY;
+        targetBar.scaleX = targetBarWidth / 1587;
+        targetBar.scaleY = targetBarHeight / 597;
+        targetBar.image.onload = () => stage.update();
+        stage.addChild(targetBar);
+        
+        new Label({text: "Target Bar", size: 24, color: "#FFFFFF"})
+            .loc(70, targetBarY + 15);
+
+        const letterData = ["?", "?", "?", "?"];
+        const letterWidth = 85;
+        const letterHeight = 85;
+        const letterGap = 30; // Keep the current spacing between boxes.
+        const letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
+        const letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
+        const letterY = targetBarY + targetBarHeight / 2 - letterHeight / 2;
+
+        letterData.forEach((text, i) => {
+            const letterBox = new createjs.Shape();
+            letterBox.graphics
+                .setStrokeStyle(4)
+                .setStrokeDash([6, 4])
+                .beginStroke("#FFFFFF")
+                .beginFill("rgba(245, 232, 200, 0.2)")
+                .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
+            letterBox.x = letterStartX + i * (letterWidth + letterGap);
+            letterBox.y = letterY;
+            stage.addChild(letterBox);
+                
+            addOutlinedText(
+                text,
+                "bold 50px Arial",
+                letterBox.x + letterWidth / 2,
+                letterBox.y + letterHeight / 2
+            );
+        });
+
+        // ==========================================
+        // 2. Bottom Tools Area
+        // ==========================================
+        const toolsAreaY = frame.height - 150;
+
+        // Transparent tool area with a white outline marking its position.
+        new Rectangle(720, 150, null, "#FFFFFF", 2)
+            .loc(50, toolsAreaY);
+
+        new Label({text: "Tools Area", size: 24, color: "#FFFFFF"})
+            .loc(70, toolsAreaY + 15);
+
+        const toolCount = 5;
+        const toolsAreaX = 50;
+        const toolsAreaWidth = 720;
+        const toolsAreaHeight = 150;
+        const toolGap = 4;
+        const toolTop = toolsAreaY + toolsAreaHeight * 0.25;
+        const toolHeight = toolsAreaHeight * 0.7;
+        const imageAspect = 496 / 357;
+        const toolWidth = Math.min(
+            toolHeight * imageAspect,
+            (toolsAreaWidth - toolGap * (toolCount - 1)) / toolCount
+        );
+        const actualToolHeight = toolWidth / imageAspect;
+        // Tool order: axe, scissors, gem, hook, hammer.
+        const toolAssets = ["axe.png", "scissors.png", "gem.png", "hook.png", "hammer.png"];
+        const toolNames = ["Axe", "Scissors", "Gem", "Hook", "Hammer"];
+        const toolCenterY = toolTop; // Align the tool center with the top edge of its Tool frame.
+
+        for (let i = 0; i < toolCount; i++) {
+            const toolX = toolsAreaX + i * (toolWidth + toolGap);
+            // Keep the Tool frame fixed; do not add drag events to it.
+            let toolBox = new createjs.Bitmap("assets/toolBackground.png");
+            toolBox.scaleX = toolWidth / 496;
+            toolBox.scaleY = actualToolHeight / 357;
+            toolBox.x = toolX;
+            toolBox.y = toolTop;
+            toolBox.image.onload = () => stage.update();
+            stage.addChild(toolBox);
+
+            // Preserve the tool image aspect ratio and center it in its Tool frame.
+            const tool = new createjs.Bitmap("assets/" + toolAssets[i]);
+            const originalToolX = toolX + toolWidth / 2;
+            const originalToolY = toolCenterY * 1.01;
+
+            const setupTool = () => {
+                const maxToolWidth = toolWidth * 0.8;
+                const maxToolHeight = actualToolHeight * 0.8;
+                const toolScale = Math.min(
+                    maxToolWidth / tool.image.width,
+                    maxToolHeight / tool.image.height
+                );
+                tool.scaleX = toolScale;
+                tool.scaleY = toolScale;
+                tool.regX = tool.image.width / 2;
+                tool.regY = tool.image.height / 2;
+                tool.x = originalToolX;
+                tool.y = originalToolY;
+                stage.update();
+            };
+
+            tool.image.onload = setupTool;
+            if (tool.image.complete) setupTool();
+            stage.addChild(tool);
+
+            // Center the tool name and effect text in the lower text area.
+            const toolTextOffsetX = -6;
+            const toolTextCenterX = toolBox.x + toolWidth / 2 + toolTextOffsetX;
+            const toolTextAreaTop = toolTop + actualToolHeight * 0.55;
+            const toolTextAreaBottom = toolTop + actualToolHeight - 8;
+            const toolTextCenterY = (toolTextAreaTop + toolTextAreaBottom) / 2;
+
+            addOutlinedText(
+                toolNames[i],
+                "bold 21px Arial",
+                toolTextCenterX,
+                toolTextCenterY - 14
+            );
+            addOutlinedText(
+                "tool effect",
+                "16px Arial",
+                toolTextCenterX,
+                toolTextCenterY + 14
+            );
+
+            // The tool can be dragged, then returns to its original position on release.
+            let offsetX = 0;
+            let offsetY = 0;
+            tool.cursor = "pointer";
+            tool.on("mousedown", (event) => {
+                offsetX = tool.x - event.stageX;
+                offsetY = tool.y - event.stageY;
+            });
+            tool.on("pressmove", (event) => {
+                tool.x = event.stageX + offsetX;
+                tool.y = event.stageY + offsetY;
+                stage.update();
+            });
+            tool.on("pressup", () => {
+                createjs.Tween.get(tool)
+                    .to({x: originalToolX, y: originalToolY}, 200)
+                    .call(() => stage.update());
+            });
+
+        }
+
+        // ==========================================
+        // 3. Right Info Area
+        // ==========================================
+        const infoAreaX = 820;
+        const infoAreaWidth = 340;
+        const infoAreaHeight = 620;
+        const infoSectionWidth = infoAreaWidth * 0.90;
+        const infoSectionX = infoAreaX + (infoAreaWidth - infoSectionWidth) / 2;
+        const infoArea = new createjs.Shape();
+        infoArea.graphics
+            .beginFill("rgba(204, 204, 204, 0.3)")
+            // .setStrokeStyle(6)
+            // .beginStroke("#000000")
+            // .drawRoundRect(0, 0, 330, 620, 16)
+            // .setStrokeStyle(4)
+            // .beginStroke("#FFF2A8")
+            .drawRoundRect(0, 0, infoAreaWidth, infoAreaHeight, 16);
+        infoArea.x = infoAreaX;
+        infoArea.y = 40;
+        stage.addChild(infoArea);
+
+        const infoTitle = new createjs.Text("Sanskrit Smith", "bold 30px Arial", "#FFFFFF");
+        infoTitle.textAlign = "left";
+        infoTitle.textBaseline = "middle";
+        infoTitle.x = 840;
+        infoTitle.y = 68;
+        stage.addChild(infoTitle);
+
+        // Control buttons above General Status.
+        const controlButtonWidth = 90;
+        const controlButtonHeight = 24;
+        const controlButtonGap = 10;
+        const controlButtonRowWidth = controlButtonWidth * 3 + controlButtonGap * 2;
+        const controlButtonY = 150 - controlButtonHeight * 1.5;
+        const controlButtonLabels = ["How to Play", "Music", "SFX"];
+
+        controlButtonLabels.forEach((label, i) => {
+            const button = new createjs.Shape();
+            button.graphics
+                .beginFill("#FFF2A8")
+                .setStrokeStyle(2)
+                .beginStroke("#000000")
+                .drawRoundRect(0, 0, controlButtonWidth, controlButtonHeight, 6);
+            button.x = infoAreaX + (infoAreaWidth - controlButtonRowWidth) / 2
+                + i * (controlButtonWidth + controlButtonGap);
+            button.y = controlButtonY;
+            button.cursor = "pointer";
+            stage.addChild(button);
+
+            const buttonText = new createjs.Text(label, "bold 12px Arial", "#000000");
+            buttonText.textAlign = "center";
+            buttonText.textBaseline = "middle";
+            buttonText.x = button.x + controlButtonWidth / 2;
+            buttonText.y = button.y + controlButtonHeight / 2;
+            stage.addChild(buttonText);
+        });
+
+        // 3.1 Blue General Status
+        new Rectangle(infoSectionWidth, 130, null, "#FFFFFF", 2)
+            .loc(infoSectionX, 150);
+
+        // Right-align all status text in two columns.
+        const statusLabelX = 1005;
+        const statusValueX = 1115;
+        const addStatusText = (text, font, x, y) => {
+            const statusText = new createjs.Text(text, font, "#FFFFFF");
+            statusText.textAlign = "right";
+            statusText.textBaseline = "middle";
+            statusText.x = x;
+            statusText.y = y;
+            stage.addChild(statusText);
+        };
+
+        addStatusText("Today's Income", "bold 22px Arial", statusLabelX, 180);
+        addStatusText("$0", "bold 22px Arial", statusValueX, 180);
+        addStatusText("Today's Completed", "15px Arial", statusLabelX, 215);
+        addStatusText("0", "bold 18px Arial", statusValueX, 215);
+
+        // Hint button and Attempts counter share one row.
+        const hintButton = new createjs.Shape();
+        hintButton.graphics
+            .beginFill("#FFF2A8")
+            .setStrokeStyle(2)
+            .beginStroke("#000000")
+            .drawRoundRect(0, 0, 80, 32, 8);
+        hintButton.x = 855;
+        hintButton.y = 237;
+        hintButton.cursor = "pointer";
+        stage.addChild(hintButton);
+
+        const hintButtonLabel = new createjs.Text("Hint", "bold 15px Arial", "#000000");
+        hintButtonLabel.textAlign = "center";
+        hintButtonLabel.textBaseline = "middle";
+        hintButtonLabel.x = hintButton.x + 40;
+        hintButtonLabel.y = hintButton.y + 16;
+        stage.addChild(hintButtonLabel);
+
+        addStatusText("Attempts: 0", "bold 17px Arial", statusValueX, 253);
+
+        // 3.2 Black Level Dropdown placeholder
+        new Rectangle(infoSectionWidth, 45, null, "#FFFFFF", 2)
+            .loc(infoSectionX, 295);
+        new Label({text: "Level Dropdown", size: 16, color: "#FFFFFF"})
+            .loc(855, 308);
+
+        // 3.3 Green Level Status
+        new Rectangle(infoSectionWidth, 265, null, "#FFFFFF", 2)
+            .loc(infoSectionX, 355);
+
+        const levelLeftX = 855;
+        const levelTitle = new createjs.Text("Level 1", "bold 26px Arial", "#FFFFFF");
+        levelTitle.textAlign = "left";
+        levelTitle.textBaseline = "middle";
+        levelTitle.x = levelLeftX;
+        levelTitle.y = 380;
+        stage.addChild(levelTitle);
+
+        const levelRequirement = new createjs.Text(
+            "Need 5 pieces to complete the level",
+            "14px Arial",
+            "#FFFFFF"
+        );
+        levelRequirement.textAlign = "left";
+        levelRequirement.textBaseline = "middle";
+        levelRequirement.x = levelLeftX;
+        levelRequirement.y = 408;
+        stage.addChild(levelRequirement);
+
+        const progressLabel = new createjs.Text("Level Progress", "bold 13px Arial", "#FFFFFF");
+        progressLabel.textAlign = "left";
+        progressLabel.textBaseline = "middle";
+        progressLabel.x = 855;
+        progressLabel.y = 432;
+        stage.addChild(progressLabel);
+
+        const progressBar = new createjs.Shape();
+        progressBar.graphics
+            .beginFill("#174D17")
+            .drawRoundRect(0, 0, 260, 16, 8);
+        progressBar.x = 855;
+        progressBar.y = 441;
+        stage.addChild(progressBar);
+
+        const progressFill = new createjs.Shape();
+        progressFill.graphics
+            .beginFill("#FFF2A8")
+            .drawRoundRect(0, 0, 104, 16, 8);
+        progressFill.x = progressBar.x;
+        progressFill.y = progressBar.y;
+        stage.addChild(progressFill);
+
+        const completedWorks = [
+            "1. Completed Work",
+            "2. Completed Work",
+            "3. Completed Work",
+            "4. Completed Work",
+            "5. Completed Work"
+        ];
+        completedWorks.forEach((work, i) => {
+            const workText = new createjs.Text(work, "13px Arial", "#FFFFFF");
+            workText.textAlign = "left";
+            workText.textBaseline = "middle";
+            workText.x = 855;
+            workText.y = 475 + i * 25;
+            stage.addChild(workText);
+        });
+
+        stage.update(); // Refresh the stage.
+});
+</script>
+</head>
+<body>
+</body>
+</html>
