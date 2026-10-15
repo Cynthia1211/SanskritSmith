@@ -2,7 +2,8 @@
   "levels": [
     {
       "id": "level_1",
-      "toolsOptions" : ["axe", "scissors", "Gem"],
+      "wordsPerRound": 2,
+      "toolsOptions" : ["axe", "scissors", "gem"],
       "wordPools": [
         {
           "id": 1, "word": "स्त", "meaning": "XXX",
@@ -19,6 +20,37 @@
             { "step": 0, "processingPosition": "3", "tool": "axe", "targetPositions": ["3","4"],"targetConjunct": "स्य" },
             { "step": 1, "processingPosition": "2", "tool": "axe", "targetPositions": ["2","3","4"],"targetConjunct": "त्स्य" },
             { "step": 2, "processingPosition": "", "tool": "", "targetPositions": ["1","2","3","4"],"targetConjunct": "मत्स्य" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "level_99",
+      "wordsPerRound": 3,
+      "toolsOptions" : ["axe", "scissors", "gem", "hook", "hammer"],
+      "wordPools": [
+        {
+          "id": 1, "word": "क्ष", "meaning": "XXX",
+          "letters": ["क", "ष"], "initial":["_", "ष"],
+          "targetSlots": [
+            { "step": 0, "processingPosition": "1", "tool": "hammer", "targetPositions": ["1","2"], "targetConjunct": "क्ष" },
+            { "step": 1, "processingPosition": "", "tool": "", "targetPositions": ["1","2"],"targetConjunct": "क्ष" }
+          ]
+        },
+        {
+          "id": 2, "word": "ज्ञ", "meaning": "XXX",
+          "letters": ["ज", "्ञ"], "initial":["_", "्ञ"],
+          "targetSlots": [
+            { "step": 0, "processingPosition": "1", "tool": "hammer", "targetPositions": ["1","2"], "targetConjunct": "ज्ञ" },
+            { "step": 1, "processingPosition": "", "tool": "", "targetPositions": ["1","2"],"targetConjunct": "ज्ञ" }
+          ]
+        },
+        {
+          "id": 3, "word": "त्र", "meaning": "XXX",
+          "letters": ["त", "्र"], "initial":["_", "्र"],
+          "targetSlots": [
+            { "step": 0, "processingPosition": "1", "tool": "hammer", "targetPositions": ["1","2"], "targetConjunct": "त्र" },
+            { "step": 1, "processingPosition": "", "tool": "", "targetPositions": ["1","2"],"targetConjunct": "त्र" }
           ]
         }
       ]

@@ -3,10 +3,17 @@
 <head>
 <meta charset="utf-8" />
 <title>Sanskrit Smith</title>
+<link rel="stylesheet" href="css/styles.css" />
 
 <!-- Standard ZIM 016 setup: ZIM depends on CreateJS -->
 <script src="https://zimjs.org/cdn/1.5/createjs.js"></script>
 <script src="https://zimjs.org/cdn/016/zim_min.js"></script>
+<script src="js/game-data.js"></script>
+<script src="js/game-flow.js"></script>
+<script src="js/helpers.js"></script>
+<script src="js/letter-processing.js"></script>
+<script src="js/target-layout.js"></script>
+<script src="js/tool-interactions.js"></script>
 
 <script>
 // Define the Frame using the current ZIM syntax.
@@ -45,23 +52,17 @@ frame.on("ready", () => {
             image.src = "assets/toolBackground.png";
         })
     ]).then(async ([targetBarImage, toolFrameImage]) => {
-        const fallbackLevels = {levels: [{id: "level_1", toolsOptions: ["axe", "scissors", "Gem"], wordPools: [{
-            id: 1, word: "स्त", meaning: "XXX", letters: ["स", "त"], initial: ["_", "त"],
-            targetSlots: [
-                {step: 0, processingPosition: "1", tool: "axe", targetPositions: ["1", "2"], targetConjunct: "स्त"},
-                {step: 1, processingPosition: "", tool: "", targetPositions: ["1", "2"], targetConjunct: "स्त"}
-            ]
-        }]}]};
-        const fallbackTools = [{toolName: "axe", toolEffect: "Split the letter", toolAnimation: "axeSplit"},
-            {toolName: "scissors", toolEffect: "Trim the letter", toolAnimation: "scissorsTrim"},
-            {toolName: "Gem", toolEffect: "Add halant", toolAnimation: "gemHalant"}];
-        const loadJson = (url, fallback) => fetch(url).then(response => response.json()).catch(() => fallback);
-        const [levelData, toolData] = await Promise.all([loadJson("levels.json", fallbackLevels), loadJson("tools.json", fallbackTools)]);
-        const level = levelData.levels[0];
-        const words = [...level.wordPools].sort(() => Math.random() - 0.5).slice(0, 5);
-        let wordIndex = 0;
-        let stepIndex = 0;
-        let currentWord = words[wordIndex];
+        const [levelData, toolData, characterRules] = await Promise.all([
+            SanskritSmith.loadJson("levels.json", SanskritSmith.fallbackLevels),
+            SanskritSmith.loadJson("tools.json", SanskritSmith.fallbackTools),
+            SanskritSmith.loadJson("charactersRules.json", SanskritSmith.fallbackCharacters)
+        ]);
+        const campaign = SanskritSmith.createCampaign(levelData.levels);
+        let level = campaign.level;
+        let words = campaign.words;
+        let wordIndex = campaign.wordIndex;
+        let stepIndex = campaign.stepIndex;
+        let currentWord = campaign.word;
         let targetTextRefs = [];
         let targetBoxRefs = [];
         let targetConjunctAnimationRunning = false;
@@ -71,6 +72,11 @@ frame.on("ready", () => {
         let triggerToolAnimation = null;
         let advanceToNextProcessingStep = null;
         const toolDisplayRefs = [];
+        const toolDisplayGroups = [];
+        const selectedWordLabels = [];
+        let levelTitle;
+        let levelRequirement;
+        let progressFill;
         const stage = frame.stage;
         stage.enableMouseOver();
 
@@ -94,24 +100,8 @@ frame.on("ready", () => {
         const toolsAreaHeight = 150;
         const toolsAreaY = frame.height - toolsAreaHeight;
 
-        // Solid light-yellow text with a black outline.
-        const addOutlinedText = (text, font, x, y) => {
-            const textOutline = new createjs.Text(text, font, "#000000");
-            textOutline.textAlign = "center";
-            textOutline.textBaseline = "middle";
-            textOutline.outline = 3;
-            textOutline.x = x;
-            textOutline.y = y;
-            stage.addChild(textOutline);
-
-            const textFill = new createjs.Text(text, font, "#FFF2A8");
-            textFill.textAlign = "center";
-            textFill.textBaseline = "middle";
-            textFill.x = x;
-            textFill.y = y;
-            stage.addChild(textFill);
-            return {textOutline, textFill, setText(value) {textOutline.text = value; textFill.text = value;}};
-        };
+        const addOutlinedText = (text, font, x, y) =>
+            SanskritSmith.addOutlinedText(stage, text, font, x, y);
 
         // Preserve the background aspect ratio and crop from the center to avoid distortion.
         const background = new Pic("background.jpeg")
@@ -149,16 +139,7 @@ frame.on("ready", () => {
 
             // Keep the character still and hide a configurable part on the right.
             const letterFont = "bold 400px 'Noto Sans Devanagari', 'Nirmala UI', Arial";
-            const letterCenterX = processingLetterSize / 2;
-            const letterCenterY = processingLetterSize / 2;
             const hiddenRightRatio = 0.45;
-
-            const firstLetterMask = new createjs.Shape();
-            firstLetterMask.graphics
-                .beginFill("#000000")
-                .drawRect(0, 0, processingLetterSize, processingLetterSize);
-            firstLetterMask.x = processingLetterBox.x;
-            firstLetterMask.y = processingLetterBox.y;
 
             const processingPosition = currentWord.targetSlots[stepIndex].processingPosition;
             const processingText = processingPosition === ""
@@ -167,84 +148,83 @@ frame.on("ready", () => {
             const processingLetter = new createjs.Text(processingText, letterFont, "#FFFFFF");
             processingLetterRef = processingLetter;
             processingLetterBoxRef = processingLetterBox;
-            const firstLetter = processingLetter.clone();
-            firstLetter.textAlign = "center";
-            firstLetter.textBaseline = "middle";
-            firstLetter.x = processingLetterBox.x + letterCenterX;
-            firstLetter.y = processingLetterBox.y + letterCenterY;
-            firstLetter.mask = firstLetterMask;
-            stage.addChild(firstLetter);
-
-            const secondLetterMask = new createjs.Shape();
-            secondLetterMask.graphics
-                .beginFill("#000000")
-                .drawRect(0, 0, processingLetterSize, processingLetterSize);
-            secondLetterMask.x = processingLetterBox.x;
-            secondLetterMask.y = processingLetterBox.y;
-
-            const secondLetter = processingLetter.clone();
-            secondLetter.textAlign = "center";
-            secondLetter.textBaseline = "middle";
-            secondLetter.x = processingLetterBox.x + letterCenterX;
-            secondLetter.y = processingLetterBox.y + letterCenterY;
-            secondLetter.mask = secondLetterMask;
-            secondLetter.visible = false;
-            stage.addChild(secondLetter);
+            const processingParts = SanskritSmith.createProcessingLetterParts({
+                stage,
+                createjs,
+                baseLetter: processingLetter,
+                box: processingLetterBox,
+                size: processingLetterSize
+            });
+            const getPartsMode = step => step?.tool?.toLowerCase() === "axe" ? "axe" : "single";
+            processingParts.reset(processingLetter.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
 
             advanceToNextProcessingStep = () => {
-                stepIndex += 1;
-                const nextStep = currentWord.targetSlots[stepIndex];
+                const nextStep = campaign.advanceStep();
+                stepIndex = campaign.stepIndex;
                 if (!nextStep) return;
+                updateProcessingPositionGlow();
 
                 const noProcessingPosition = nextStep.processingPosition === ""
                     || nextStep.processingPosition == null;
                 const noTool = nextStep.tool === "" || nextStep.tool == null;
                 if (noProcessingPosition && noTool) {
-                    firstLetter.visible = false;
-                    secondLetter.visible = false;
-                    firstLetterMask.visible = false;
-                    secondLetterMask.visible = false;
-                    updateProcessingLetter(firstLetter, secondLetter, processingLetterRef);
+                    processingParts.hide();
+                    updateProcessingLetter(processingParts, processingLetterRef);
                     stage.update();
-                    animateCompleteConjunct(nextStep, () => { stepIndex += 1; });
+                    animateCompleteConjunct(nextStep, () => {
+                        startNextWord();
+                    });
                     return;
                 }
 
-                createjs.Tween.removeTweens(firstLetter);
-                createjs.Tween.removeTweens(secondLetter);
-                createjs.Tween.removeTweens(firstLetterMask);
-                createjs.Tween.removeTweens(secondLetterMask);
-
-                firstLetter.regX = 0;
-                firstLetter.regY = 0;
-                secondLetter.regX = 0;
-                secondLetter.regY = 0;
-                firstLetter.x = processingLetterBox.x + letterCenterX;
-                firstLetter.y = processingLetterBox.y + letterCenterY;
-                secondLetter.x = processingLetterBox.x + letterCenterX;
-                secondLetter.y = processingLetterBox.y + letterCenterY;
-                firstLetter.scaleX = 1;
-                firstLetter.scaleY = 1;
-                secondLetter.scaleX = 1;
-                secondLetter.scaleY = 1;
-                firstLetter.alpha = 1;
-                secondLetter.alpha = 1;
-                firstLetter.visible = nextStep.processingPosition !== "";
-                secondLetter.visible = false;
-
-                firstLetterMask.x = processingLetterBox.x;
-                firstLetterMask.y = processingLetterBox.y;
-                firstLetterMask.scaleX = 1;
-                firstLetterMask.scaleY = 1;
-                secondLetterMask.x = processingLetterBox.x;
-                secondLetterMask.y = processingLetterBox.y;
-                secondLetterMask.scaleX = 1;
-                secondLetterMask.scaleY = 1;
-                firstLetterMask.visible = firstLetter.visible;
-                secondLetterMask.visible = false;
-
-                updateProcessingLetter(firstLetter, secondLetter, processingLetterRef);
+                processingParts.reset(
+                    processingLetterRef.text,
+                    nextStep.processingPosition !== "",
+                    getPartsMode(nextStep)
+                );
+                updateProcessingLetter(processingParts, processingLetterRef);
                 stage.update();
+            };
+
+            const startNextWord = () => {
+                const transition = campaign.completeWord();
+                if (transition === "complete") {
+                    processingParts.hide();
+                    if (levelTitle) levelTitle.text = "All levels complete!";
+                    if (levelRequirement) levelRequirement.text = "You completed every selected word.";
+                    if (progressFill) {
+                        progressFill.graphics.clear()
+                            .beginFill("#FFF2A8")
+                            .drawRoundRect(0, 0, 260, 16, 8);
+                    }
+                    stage.update();
+                    console.info("[campaign] all levels completed");
+                    return;
+                }
+
+                level = campaign.level;
+                words = campaign.words;
+                wordIndex = campaign.wordIndex;
+                stepIndex = campaign.stepIndex;
+                currentWord = campaign.word;
+                targetConjunctAnimationRunning = false;
+                renderTargetLetters();
+                updateProcessingPositionGlow();
+                updateCampaignStatus();
+                updateToolsForLevel();
+
+                processingParts.reset(
+                    processingLetterRef.text,
+                    true,
+                    getPartsMode(currentWord.targetSlots[stepIndex])
+                );
+                updateProcessingLetter(processingParts, processingLetterRef);
+                stage.update();
+                console.info("[campaign] started next word", {
+                    level: level.id,
+                    wordIndex,
+                    word: currentWord.word
+                });
             };
 
             const processingLetterInteraction = new createjs.Shape();
@@ -253,166 +233,43 @@ frame.on("ready", () => {
                 .drawRect(0, 0, processingLetterSize, processingLetterSize);
             processingLetterInteraction.x = processingLetterBox.x;
             processingLetterInteraction.y = processingLetterBox.y;
-            function axeSplit(processingLetter, hiddenRightRatio, onComplete) {
-                const visibleLeftRatio = 1 - hiddenRightRatio;
+            const letterProcessor = SanskritSmith.createLetterProcessor({
+                stage,
+                createjs,
+                letterParts: processingParts,
+                processingLetterBox,
+                processingLetterSize,
+                letterWidth,
+                letterHeight,
+                getCurrentStep: () => currentWord.targetSlots[stepIndex],
+                getTargetBox: position => targetBoxRefs[position - 1],
+                animateTargetPositionsToConjunct,
+                advanceToNextStep: () => advanceToNextProcessingStep(),
+                defaultHiddenRightRatio: hiddenRightRatio
+            });
 
-                createjs.Tween.removeTweens(firstLetterMask);
-                createjs.Tween.removeTweens(secondLetterMask);
-                createjs.Tween.removeTweens(secondLetter);
-
-                firstLetterMask.x = processingLetterBox.x;
-                firstLetterMask.scaleX = 1;
-                secondLetterMask.x = processingLetterBox.x;
-                secondLetterMask.scaleX = 1;
-                secondLetter.x = processingLetterBox.x + letterCenterX;
-                secondLetter.alpha = 1;
-                secondLetter.visible = true;
-
-                // Hide both parts immediately when the interaction starts.
-                firstLetterMask.scaleX = visibleLeftRatio;
-                secondLetterMask.x = processingLetterBox.x + processingLetterSize * visibleLeftRatio;
-                secondLetterMask.scaleX = hiddenRightRatio;
-                stage.update();
-
-                // Only the second character slides right and fades out.
-                const secondLetterSlideDistance = processingLetterSize * 0.35;
-                createjs.Tween.get(secondLetterMask)
-                    .to({
-                        x: processingLetterBox.x
-                            + processingLetterSize * visibleLeftRatio
-                            + secondLetterSlideDistance
-                    }, 500)
-                    .on("change", () => stage.update());
-                const splitTween = createjs.Tween.get(secondLetter)
-                    .to({
-                        x: processingLetterBox.x + letterCenterX + secondLetterSlideDistance,
-                        alpha: 0
-                    }, 500);
-                splitTween.on("change", () => stage.update());
-                splitTween.call(() => {
-                    stage.update();
-                    if (onComplete) onComplete();
-                });
-                return splitTween;
-            }
-
-            function animateProcessedLetterToTarget() {
-                const verticalDistance = processingLetterSize * 0.25;
-                const moveAndFadeToProcessingPosition = () => {
-                    const processingPosition = currentWord.targetSlots[stepIndex].processingPosition;
-                    const targetBox = processingPosition && targetBoxRefs[Number(processingPosition) - 1];
-                    if (!targetBox) return;
-
-                    const targetCenterX = targetBox.x + letterWidth / 2;
-                    const targetCenterY = targetBox.y + letterHeight / 2;
-                    const currentVisualCenterX = firstLetter.x
-                        - firstLetter.regX * firstLetter.scaleX;
-                    const currentVisualCenterY = firstLetter.y
-                        - firstLetter.regY * firstLetter.scaleY;
-                    const moveX = targetCenterX - currentVisualCenterX;
-                    const moveY = targetCenterY - currentVisualCenterY;
-                    let flightFinished = false;
-                    const finishFlight = () => {
-                        if (flightFinished) return;
-                        flightFinished = true;
-                        firstLetter.visible = false;
-                        secondLetter.visible = false;
-                        firstLetterMask.visible = false;
-                        secondLetterMask.visible = false;
-                        stage.update();
-                        console.log("[processedLetter] flight finished; starting target conjunct", {
-                            stepIndex,
-                            targetPositions: currentWord.targetSlots[stepIndex].targetPositions,
-                            targetConjunct: currentWord.targetSlots[stepIndex].targetConjunct
-                        });
-                        animateTargetPositionsToConjunct(
-                            currentWord.targetSlots[stepIndex],
-                            advanceToNextProcessingStep
-                        );
-                    };
-
-                    // Move masks with the letters. Combine each letter's movement
-                    // and fade into one tween so both effects happen simultaneously.
-                    [firstLetterMask, secondLetterMask].forEach(part => {
-                        createjs.Tween.get(part)
-                            .to({x: part.x + moveX, y: part.y + moveY}, 500)
-                            .on("change", () => stage.update());
+            triggerToolAnimation = toolName => {
+                const step = currentWord.targetSlots[stepIndex];
+                const rulesForLetter = characterRules[processingLetter.text] || [];
+                const rule = rulesForLetter.find(candidate =>
+                    candidate.tool
+                    && step?.tool
+                    && candidate.tool.toLowerCase() === step.tool.toLowerCase()
+                    && candidate.tool.toLowerCase() === toolName.toLowerCase()
+                );
+                const isLevelHammerStep = step?.tool?.toLowerCase() === "hammer"
+                    && toolName.toLowerCase() === "hammer";
+                if (!rule && !isLevelHammerStep) {
+                    console.warn("[characterRules] no matching rule; using generic animation", {
+                        character: processingLetter.text,
+                        requiredTool: step && step.tool,
+                        draggedTool: toolName
                     });
-                    const firstLetterFlightTween = createjs.Tween.get(firstLetter)
-                        .to({
-                            x: firstLetter.x + moveX,
-                            y: firstLetter.y + moveY,
-                            alpha: 0
-                        }, 500)
-                        .on("change", () => stage.update());
-                    createjs.Tween.get(secondLetter)
-                        .to({
-                            x: secondLetter.x + moveX,
-                            y: secondLetter.y + moveY,
-                            alpha: 0
-                        }, 500)
-                        .on("change", () => stage.update());
-                    firstLetterFlightTween.call(finishFlight);
-                    window.setTimeout(() => {
-                        if (!flightFinished) {
-                            console.warn("[processedLetter] using timed completion fallback");
-                            finishFlight();
-                        }
-                    }, 550);
-                };
-
-                const shrinkAroundCutLines = () => {
-                    const targetScaleX = letterWidth / processingLetterSize;
-                    const targetScaleY = letterHeight / processingLetterSize;
-
-                    // Keep the clipped edge fixed by shrinking each letter around
-                    // its current mask boundary. The masks themselves do not scale.
-                    const firstBoundaryX = firstLetterMask.x
-                        + processingLetterSize * firstLetterMask.scaleX;
-                    const secondBoundaryX = secondLetterMask.x;
-                    const shrinkLetter = (letter, boundaryX) => {
-                        const originalX = letter.x;
-                        letter.regX = boundaryX - originalX;
-                        letter.x = boundaryX;
-                        createjs.Tween.get(letter)
-                            .to({scaleX: targetScaleX, scaleY: targetScaleY}, 400)
-                            .on("change", () => stage.update());
-                    };
-
-                    shrinkLetter(secondLetter, secondBoundaryX);
-                    shrinkLetter(firstLetter, firstBoundaryX);
-
-                    // Start the flight once the 400ms shrink has completed.
-                    createjs.Tween.get(firstLetter)
-                        .wait(400)
-                        .call(moveAndFadeToProcessingPosition);
-                };
-
-                [firstLetter, secondLetter, firstLetterMask, secondLetterMask].forEach(part => {
-                    createjs.Tween.get(part)
-                        .to({y: part.y - verticalDistance}, 400)
-                        .on("change", () => stage.update());
-                });
-                createjs.Tween.get(firstLetter)
-                    .wait(400)
-                    .call(shrinkAroundCutLines);
-            }
-
-            triggerToolAnimation = toolAnimation => {
-                if (toolAnimation === "axeSplit") {
-                    return axeSplit(processingLetter.text, hiddenRightRatio, animateProcessedLetterToTarget);
                 }
-
-                // Keep each tool animation name callable from tools.json. These animations
-                // can be replaced independently as the individual tool effects are designed.
-                const animation = createjs.Tween.get(firstLetter)
-                    .to({alpha: 0, scaleX: 1.15, scaleY: 1.15}, 180)
-                    .to({alpha: 1, scaleX: 1, scaleY: 1}, 180)
-                    .call(() => {
-                        stage.update();
-                        animateProcessedLetterToTarget();
-                    });
-                return animation;
+                return letterProcessor.run(
+                    rule && rule.toolAnimation || (isLevelHammerStep ? "hammerForge" : undefined),
+                    rule && rule.toolParams || {}
+                );
             };
             stage.addChild(processingLetterInteraction);
 
@@ -434,37 +291,72 @@ frame.on("ready", () => {
         new Label({text: "Target Bar", size: 24, color: "#FFFFFF"})
             .loc(70, targetBarY + 15);
 
-        const letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
+        let letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
         const letterWidth = 85;
         const letterHeight = 85;
         const letterGap = 30; // Keep the current spacing between boxes.
-        const letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
-        const letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
+        let letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
+        let letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
         const letterY = targetBarY + targetBarHeight / 2 - letterHeight / 2;
 
-        letterData.forEach((text, i) => {
-            const letterBox = new createjs.Shape();
-            if (currentWord.initial[i] === "_") {
-                letterBox.graphics
-                    .setStrokeStyle(4)
-                    .setStrokeDash([6, 4])
-                    .beginStroke("#FFFFFF")
-                    .beginFill("rgba(245, 232, 200, 0.2)")
-                    .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
-            }
-            letterBox.x = letterStartX + i * (letterWidth + letterGap);
-            letterBox.y = letterY;
-            stage.addChild(letterBox);
-            targetBoxRefs.push(letterBox);
-                
-            const textRef = addOutlinedText(
-                text,
-                "bold 50px Arial",
-                letterBox.x + letterWidth / 2,
-                letterBox.y + letterHeight / 2
-            );
-            targetTextRefs.push(textRef);
-        });
+        function renderTargetLetters() {
+            targetTextRefs.forEach(textRef => {
+                if (!textRef) return;
+                [textRef.textOutline, textRef.textFill].forEach(text => {
+                    createjs.Tween.removeTweens(text);
+                    stage.removeChild(text);
+                });
+            });
+            targetBoxRefs.forEach(box => {
+                createjs.Tween.removeTweens(box);
+                stage.removeChild(box);
+            });
+            targetTextRefs = [];
+            targetBoxRefs = [];
+
+            letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
+            letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
+            letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
+
+            letterData.forEach((text, i) => {
+                const letterBox = new createjs.Shape();
+                if (currentWord.initial[i] === "_") {
+                    letterBox.graphics
+                        .setStrokeStyle(4)
+                        .setStrokeDash([6, 4])
+                        .beginStroke("#FFFFFF")
+                        .beginFill("rgba(245, 232, 200, 0.2)")
+                        .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
+                } else {
+                    letterBox.graphics
+                        .setStrokeStyle(2)
+                        .beginStroke("rgba(255, 255, 255, 0.45)")
+                        .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
+                }
+                letterBox.x = letterStartX + i * (letterWidth + letterGap);
+                letterBox.y = letterY;
+                stage.addChild(letterBox);
+                targetBoxRefs.push(letterBox);
+
+                const textRef = addOutlinedText(
+                    text,
+                    "bold 50px Arial",
+                    letterBox.x + letterWidth / 2,
+                    letterBox.y + letterHeight / 2
+                );
+                targetTextRefs.push(textRef);
+            });
+        }
+        renderTargetLetters();
+
+        function updateProcessingPositionGlow() {
+            targetBoxRefs.forEach(box => { box.shadow = null; });
+            const step = currentWord && currentWord.targetSlots[stepIndex];
+            const position = Number(step && step.processingPosition);
+            if (!Number.isInteger(position) || position < 1 || position > targetBoxRefs.length) return;
+            targetBoxRefs[position - 1].shadow = new createjs.Shadow("#FFD700", 0, 0, 18);
+        }
+        updateProcessingPositionGlow();
 
         const targetBarInteraction = new createjs.Shape();
         targetBarInteraction.graphics
@@ -481,22 +373,20 @@ frame.on("ready", () => {
                 targetConjunct: step && step.targetConjunct
             });
             if (!step) return;
-            const isCompleteStep = (step.processingPosition === "" || step.processingPosition == null)
-                && (step.tool === "" || step.tool == null);
+            const isCompleteStep = SanskritSmith.isCompleteTargetStep(step);
             if (isCompleteStep) animateCompleteConjunct(step);
             else animateTargetPositionsToConjunct(step);
         });
         stage.addChild(targetBarInteraction);
 
-        function updateProcessingLetter(firstLetter, secondLetter, processingLetter) {
+        function updateProcessingLetter(letterParts, processingLetter) {
             const step = currentWord.targetSlots[stepIndex];
             const position = step && step.processingPosition;
             const text = position === "" || position === undefined
                 ? ""
                 : currentWord.letters[Number(position) - 1];
             processingLetter.text = text;
-            firstLetter.text = text;
-            secondLetter.text = text;
+            letterParts.setText(text);
         }
 
         function animateTargetPositionsToConjunct(step, onComplete) {
@@ -504,7 +394,9 @@ frame.on("ready", () => {
         }
 
         function animateCompleteConjunct(step, onComplete) {
-            animateConjunctPositions(step, onComplete, true);
+            window.setTimeout(() => {
+                animateConjunctPositions(step, onComplete, true);
+            }, 500);
         }
 
         function animateConjunctPositions(step, onComplete, completeMode) {
@@ -520,10 +412,7 @@ frame.on("ready", () => {
             const toolIsEmpty = step.tool === "" || step.tool == null;
             const isFinalStep = completeMode || (processingPositionIsEmpty && toolIsEmpty);
 
-            const positions = [...new Set((step.targetPositions || [])
-                .map(Number)
-                .filter(position => Number.isInteger(position) && position > 0 && position <= targetBoxRefs.length))]
-                .sort((a, b) => a - b);
+            const positions = SanskritSmith.getTargetPositions(step, targetBoxRefs.length);
             if (!positions.length) {
                 targetConjunctAnimationRunning = false;
                 if (onComplete) onComplete();
@@ -539,9 +428,9 @@ frame.on("ready", () => {
                 && processingPosition > 0
                 && processingPosition <= targetBoxRefs.length;
             const centerX = isFinalStep
-                ? letterStartX + (firstPosition - 1) * (letterWidth + letterGap) + letterWidth / 2
+                ? SanskritSmith.getTargetSlotCenterX(firstPosition, letterStartX, letterWidth, letterGap)
                 : hasProcessingPosition
-                    ? letterStartX + (processingPosition - 1) * (letterWidth + letterGap) + letterWidth / 2
+                    ? SanskritSmith.getTargetSlotCenterX(processingPosition, letterStartX, letterWidth, letterGap)
                     : (left + right) / 2;
             const centerY = letterY + letterHeight / 2;
             const collapseTargets = [];
@@ -587,11 +476,17 @@ frame.on("ready", () => {
                 collapseTargets.forEach(target => {
                     createjs.Tween.removeTweens(target);
                     target.visible = false;
+                    stage.removeChild(target);
+                });
+                // Clear every collapsed slot's text ref so a later step cannot
+                // make stale letters visible again when it resets tween state.
+                positions.forEach(position => {
+                    targetTextRefs[position - 1] = null;
                 });
 
                 const replacementX = isFinalStep
                     ? targetBarX + targetBarWidth / 2
-                    : letterStartX + (firstPosition - 1) * (letterWidth + letterGap) + letterWidth / 2;
+                    : SanskritSmith.getTargetSlotCenterX(firstPosition, letterStartX, letterWidth, letterGap);
                 const replacementText = addOutlinedText(
                     step.targetConjunct || "",
                     "bold 50px Arial",
@@ -677,12 +572,32 @@ frame.on("ready", () => {
         new Label({text: "Tools Area", size: 24, color: "#FFFFFF"})
             .loc(70, toolsAreaY + 15);
 
-        // The level controls which tools are visible. The word-level property is kept as a fallback
-        // so older level files continue to work.
-        const toolNamesForLevel = level.toolsOptions || currentWord.toolsOptions || [];
-        const availableTools = toolNamesForLevel
+        // Create one visual for every campaign tool, then reveal only this level's options.
+        const toolNamesForCampaign = [...new Set(levelData.levels.flatMap(levelConfig =>
+            levelConfig.toolsOptions || []
+        ))];
+        const availableTools = toolNamesForCampaign
             .map(name => toolData.find(toolInfo => toolInfo.toolName.toLowerCase() === name.toLowerCase()))
             .filter(Boolean);
+
+        function updateToolsForLevel() {
+            const allowedToolNames = level.toolsOptions || currentWord.toolsOptions || [];
+            const allowedTools = new Set(allowedToolNames.map(name => name.toLowerCase()));
+            const visibleGroups = toolDisplayGroups.filter(group =>
+                allowedTools.has(group.toolName.toLowerCase())
+            );
+            const visibleWidth = visibleGroups.reduce((total, group) => total + group.width, 0)
+                + toolGap * Math.max(0, visibleGroups.length - 1);
+            let nextX = toolsAreaX + (toolsAreaWidth - visibleWidth) / 2;
+
+            toolDisplayGroups.forEach(group => {
+                const visible = allowedTools.has(group.toolName.toLowerCase());
+                group.displays.forEach(display => { display.visible = visible; });
+                if (!visible) return;
+                group.moveTo(nextX);
+                nextX += group.width + toolGap;
+            });
+        }
         const toolCount = availableTools.length;
         const toolGap = 0;
         const toolTop = toolsAreaY + toolsAreaHeight * 0.25;
@@ -713,11 +628,15 @@ frame.on("ready", () => {
             toolBox.y = toolTop;
             toolBox.image.onload = () => stage.update();
             stage.addChild(toolBox);
+            const toolVisuals = [toolBox];
 
             // Preserve the tool image aspect ratio and center it in its Tool frame.
             const tool = new createjs.Bitmap("assets/" + toolInfo.asset);
             const originalToolX = toolX + toolWidth / 2;
             const originalToolY = toolCenterY * 1.01;
+            let interactionAttached = false;
+            let setToolHomePosition = null;
+            let toolDisplayGroup = null;
 
             const setupTool = () => {
                 const maxToolWidth = toolWidth * 0.8;
@@ -726,18 +645,39 @@ frame.on("ready", () => {
                     maxToolWidth / tool.image.width,
                     maxToolHeight / tool.image.height
                 );
-                tool.scaleX = toolScale;
-                tool.scaleY = toolScale;
+                tool.scaleX = toolScale * 0.95;
+                tool.scaleY = toolScale * 0.95;
                 tool.regX = tool.image.width / 2;
                 tool.regY = tool.image.height / 2;
-                tool.x = originalToolX;
+                tool.x = (toolDisplayGroup ? toolDisplayGroup.x : toolX) + toolWidth / 2;
                 tool.y = originalToolY;
+                if (!interactionAttached) {
+                    interactionAttached = true;
+                    const toolInteraction = SanskritSmith.attachToolInteraction({
+                        tool,
+                        stage,
+                        createjs,
+                        originalX: originalToolX,
+                        originalY: originalToolY,
+                        getCurrentStep: () => currentWord.targetSlots[stepIndex],
+                        processingLetterBox: () => processingLetterBoxRef,
+                        processingLetterSize: () => processingLetterSizeRef,
+                        isCorrectTool: step => step.tool
+                            && toolInfo.toolName.toLowerCase() === step.tool.toLowerCase(),
+                        onCorrectDrop: () => {
+                            if (triggerToolAnimation) triggerToolAnimation(toolInfo.toolName);
+                        }
+                    });
+                    setToolHomePosition = toolInteraction.setHomePosition;
+                }
+                if (setToolHomePosition) setToolHomePosition(tool.x, tool.y);
                 stage.update();
             };
 
             tool.image.onload = setupTool;
             if (tool.image.complete) setupTool();
             stage.addChild(tool);
+            toolVisuals.push(tool);
             toolDisplayRefs.push(tool);
 
             // Center the tool name and effect text in the lower text area.
@@ -746,70 +686,40 @@ frame.on("ready", () => {
             const toolTextAreaBottom = toolTop + actualToolHeight - 8;
             const toolTextCenterY = (toolTextAreaTop + toolTextAreaBottom) / 2;
 
-            addOutlinedText(
+            const toolNameText = addOutlinedText(
                 toolInfo.label || toolInfo.toolName,
                 "bold 21px Arial",
                 toolTextCenterX,
                 toolTextCenterY - 20
             );
-            addOutlinedText(
+            const toolEffectText = addOutlinedText(
                 toolInfo.toolEffect || "tool effect",
                 "16px Arial",
                 toolTextCenterX,
                 toolTextCenterY + 5
             );
-
-            // The tool can be dragged, then returns to its original position on release.
-            let offsetX = 0;
-            let offsetY = 0;
-            tool.cursor = "pointer";
-            tool.on("mouseover", () => {
-                if (typeof tool.glow === "function") {
-                    tool.glow("#FFD700", 50);
-                } else {
-                    tool.shadow = new createjs.Shadow("#FFD700", 0, 0, 20);
+            toolVisuals.push(
+                toolNameText.textOutline,
+                toolNameText.textFill,
+                toolEffectText.textOutline,
+                toolEffectText.textFill
+            );
+            toolDisplayGroup = {
+                toolName: toolInfo.toolName,
+                displays: toolVisuals,
+                width: toolWidth,
+                x: toolX,
+                moveTo(nextX) {
+                    const offsetX = nextX - this.x;
+                    this.displays.forEach(display => { display.x += offsetX; });
+                    this.x = nextX;
+                    if (setToolHomePosition) setToolHomePosition(tool.x, tool.y);
                 }
-                stage.update();
-            });
-            tool.on("mouseout", () => {
-                if (typeof tool.noGlow === "function") {
-                    tool.noGlow();
-                } else {
-                    tool.shadow = null;
-                }
-                stage.update();
-            });
-            tool.on("mousedown", (event) => {
-                // Keep the dragged tool above every other visual layer.
-                stage.addChild(tool);
-                offsetX = tool.x - event.stageX;
-                offsetY = tool.y - event.stageY;
-                stage.update();
-            });
-            tool.on("pressmove", (event) => {
-                tool.x = event.stageX + offsetX;
-                tool.y = event.stageY + offsetY;
-                stage.update();
-            });
-            tool.on("pressup", (event) => {
-                const step = currentWord.targetSlots[stepIndex];
-                const droppedOnProcessingLetter = processingLetterBoxRef &&
-                    event.stageX >= processingLetterBoxRef.x &&
-                    event.stageX <= processingLetterBoxRef.x + processingLetterSizeRef &&
-                    event.stageY >= processingLetterBoxRef.y &&
-                    event.stageY <= processingLetterBoxRef.y + processingLetterSizeRef;
-                const isCorrectTool = step &&
-                    toolInfo.toolName.toLowerCase() === step.tool.toLowerCase();
-
-                if (droppedOnProcessingLetter && isCorrectTool && triggerToolAnimation) {
-                    triggerToolAnimation(toolInfo.toolAnimation);
-                }
-                createjs.Tween.get(tool)
-                    .to({x: originalToolX, y: originalToolY}, 200)
-                    .call(() => stage.update());
-            });
+            };
+            toolDisplayGroups.push(toolDisplayGroup);
 
         }
+        updateToolsForLevel();
 
         // ==========================================
         // 3. Right Info Area
@@ -922,14 +832,14 @@ frame.on("ready", () => {
             .loc(infoSectionX, 355);
 
         const levelLeftX = 855;
-        const levelTitle = new createjs.Text("Level 1", "bold 26px Arial", "#FFFFFF");
+        levelTitle = new createjs.Text("Level 1", "bold 26px Arial", "#FFFFFF");
         levelTitle.textAlign = "left";
         levelTitle.textBaseline = "middle";
         levelTitle.x = levelLeftX;
         levelTitle.y = 380;
         stage.addChild(levelTitle);
 
-        const levelRequirement = new createjs.Text(
+        levelRequirement = new createjs.Text(
             "Need 5 pieces to complete the level",
             "14px Arial",
             "#FFFFFF"
@@ -955,23 +865,39 @@ frame.on("ready", () => {
         progressBar.y = 441;
         stage.addChild(progressBar);
 
-        const progressFill = new createjs.Shape();
+        progressFill = new createjs.Shape();
         progressFill.graphics
             .beginFill("#FFF2A8")
-            .drawRoundRect(0, 0, 104, 16, 8);
+            .drawRoundRect(0, 0, 0, 16, 8);
         progressFill.x = progressBar.x;
         progressFill.y = progressBar.y;
         stage.addChild(progressFill);
 
-        const selectedWorks = words.map((word, i) => `${i + 1}. ${word.word}`);
-        selectedWorks.forEach((work, i) => {
-            const workText = new createjs.Text(work, "13px Arial", "#FFFFFF");
-            workText.textAlign = "left";
-            workText.textBaseline = "middle";
-            workText.x = 855;
-            workText.y = 475 + i * 25;
-            stage.addChild(workText);
-        });
+        function updateCampaignStatus() {
+            if (!level) return;
+            const levelNumber = String(level.id || "").match(/\d+/)?.[0] || campaign.levelIndex + 1;
+            levelTitle.text = level.name || `Level ${levelNumber}`;
+            levelRequirement.text = `Complete ${words.length} words to clear this level`;
+
+            selectedWordLabels.forEach(label => stage.removeChild(label));
+            selectedWordLabels.length = 0;
+            words.forEach((word, index) => {
+                const label = new createjs.Text(`${index + 1}. ${word.word}`, "13px Arial", "#FFFFFF");
+                label.textAlign = "left";
+                label.textBaseline = "middle";
+                label.x = 855;
+                label.y = 475 + index * 25;
+                stage.addChild(label);
+                selectedWordLabels.push(label);
+            });
+
+            const completionRatio = words.length ? wordIndex / words.length : 0;
+            progressFill.graphics.clear()
+                .beginFill("#FFF2A8")
+                .drawRoundRect(0, 0, 260 * completionRatio, 16, 8);
+            stage.update();
+        }
+        updateCampaignStatus();
 
         // Keep tool artwork above the rest of the scene, including the info panel.
         toolDisplayRefs.forEach(tool => stage.addChild(tool));
