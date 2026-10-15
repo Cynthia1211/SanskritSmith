@@ -44,7 +44,32 @@ frame.on("ready", () => {
             image.onerror = reject;
             image.src = "assets/toolBackground.png";
         })
-    ]).then(([targetBarImage, toolFrameImage]) => {
+    ]).then(async ([targetBarImage, toolFrameImage]) => {
+        const fallbackLevels = {levels: [{id: "level_1", toolsOptions: ["axe", "scissors", "Gem"], wordPools: [{
+            id: 1, word: "स्त", meaning: "XXX", letters: ["स", "त"], initial: ["_", "त"],
+            targetSlots: [
+                {step: 0, processingPosition: "1", tool: "axe", targetPositions: ["1", "2"], targetConjunct: "स्त"},
+                {step: 1, processingPosition: "", tool: "", targetPositions: ["1", "2"], targetConjunct: "स्त"}
+            ]
+        }]}]};
+        const fallbackTools = [{toolName: "axe", toolEffect: "Split the letter", toolAnimation: "axeSplit"},
+            {toolName: "scissors", toolEffect: "Trim the letter", toolAnimation: "scissorsTrim"},
+            {toolName: "Gem", toolEffect: "Add halant", toolAnimation: "gemHalant"}];
+        const loadJson = (url, fallback) => fetch(url).then(response => response.json()).catch(() => fallback);
+        const [levelData, toolData] = await Promise.all([loadJson("levels.json", fallbackLevels), loadJson("tools.json", fallbackTools)]);
+        const level = levelData.levels[0];
+        const words = [...level.wordPools].sort(() => Math.random() - 0.5).slice(0, 5);
+        let wordIndex = 0;
+        let stepIndex = 0;
+        let currentWord = words[wordIndex];
+        let targetTextRefs = [];
+        let targetBoxRefs = [];
+        let processingLetterRef;
+        let processingLetterBoxRef;
+        let processingLetterSizeRef = 0;
+        let triggerToolAnimation = null;
+        let advanceToNextProcessingStep = null;
+        const toolDisplayRefs = [];
         const stage = frame.stage;
         stage.enableMouseOver();
 
@@ -84,6 +109,7 @@ frame.on("ready", () => {
             textFill.x = x;
             textFill.y = y;
             stage.addChild(textFill);
+            return {textOutline, textFill, setText(value) {textOutline.text = value; textFill.text = value;}};
         };
 
         // Preserve the background aspect ratio and crop from the center to avoid distortion.
@@ -107,6 +133,7 @@ frame.on("ready", () => {
 
             // Add a temporary processing letter frame above the forging station.
             const processingLetterSize = forgingStationDisplayWidth * 0.8;
+            processingLetterSizeRef = processingLetterSize;
             const processingLetterBox = new createjs.Shape();
             processingLetterBox.graphics
                 .setStrokeStyle(4)
@@ -132,7 +159,13 @@ frame.on("ready", () => {
             firstLetterMask.x = processingLetterBox.x;
             firstLetterMask.y = processingLetterBox.y;
 
-            const processingLetter = new createjs.Text("", letterFont, "#FFFFFF");
+            const processingPosition = currentWord.targetSlots[stepIndex].processingPosition;
+            const processingText = processingPosition === ""
+                ? ""
+                : currentWord.letters[Number(processingPosition) - 1];
+            const processingLetter = new createjs.Text(processingText, letterFont, "#FFFFFF");
+            processingLetterRef = processingLetter;
+            processingLetterBoxRef = processingLetterBox;
             const firstLetter = processingLetter.clone();
             firstLetter.textAlign = "center";
             firstLetter.textBaseline = "middle";
@@ -154,7 +187,50 @@ frame.on("ready", () => {
             secondLetter.x = processingLetterBox.x + letterCenterX;
             secondLetter.y = processingLetterBox.y + letterCenterY;
             secondLetter.mask = secondLetterMask;
+            secondLetter.visible = false;
             stage.addChild(secondLetter);
+
+            advanceToNextProcessingStep = () => {
+                stepIndex += 1;
+                const nextStep = currentWord.targetSlots[stepIndex];
+                if (!nextStep) return;
+
+                createjs.Tween.removeTweens(firstLetter);
+                createjs.Tween.removeTweens(secondLetter);
+                createjs.Tween.removeTweens(firstLetterMask);
+                createjs.Tween.removeTweens(secondLetterMask);
+
+                firstLetter.regX = 0;
+                firstLetter.regY = 0;
+                secondLetter.regX = 0;
+                secondLetter.regY = 0;
+                firstLetter.x = processingLetterBox.x + letterCenterX;
+                firstLetter.y = processingLetterBox.y + letterCenterY;
+                secondLetter.x = processingLetterBox.x + letterCenterX;
+                secondLetter.y = processingLetterBox.y + letterCenterY;
+                firstLetter.scaleX = 1;
+                firstLetter.scaleY = 1;
+                secondLetter.scaleX = 1;
+                secondLetter.scaleY = 1;
+                firstLetter.alpha = 1;
+                secondLetter.alpha = 1;
+                firstLetter.visible = nextStep.processingPosition !== "";
+                secondLetter.visible = false;
+
+                firstLetterMask.x = processingLetterBox.x;
+                firstLetterMask.y = processingLetterBox.y;
+                firstLetterMask.scaleX = 1;
+                firstLetterMask.scaleY = 1;
+                secondLetterMask.x = processingLetterBox.x;
+                secondLetterMask.y = processingLetterBox.y;
+                secondLetterMask.scaleX = 1;
+                secondLetterMask.scaleY = 1;
+                firstLetterMask.visible = firstLetter.visible;
+                secondLetterMask.visible = false;
+
+                updateProcessingLetter(firstLetter, secondLetter, processingLetterRef);
+                stage.update();
+            };
 
             const processingLetterInteraction = new createjs.Shape();
             processingLetterInteraction.graphics
@@ -162,8 +238,7 @@ frame.on("ready", () => {
                 .drawRect(0, 0, processingLetterSize, processingLetterSize);
             processingLetterInteraction.x = processingLetterBox.x;
             processingLetterInteraction.y = processingLetterBox.y;
-            processingLetterInteraction.cursor = "pointer";
-            processingLetterInteraction.on("click", () => {
+            function axeSplit(processingLetter, hiddenRightRatio, onComplete) {
                 const visibleLeftRatio = 1 - hiddenRightRatio;
 
                 createjs.Tween.removeTweens(firstLetterMask);
@@ -176,6 +251,7 @@ frame.on("ready", () => {
                 secondLetterMask.scaleX = 1;
                 secondLetter.x = processingLetterBox.x + letterCenterX;
                 secondLetter.alpha = 1;
+                secondLetter.visible = true;
 
                 // Hide both parts immediately when the interaction starts.
                 firstLetterMask.scaleX = visibleLeftRatio;
@@ -192,13 +268,110 @@ frame.on("ready", () => {
                             + secondLetterSlideDistance
                     }, 500)
                     .on("change", () => stage.update());
-                createjs.Tween.get(secondLetter)
+                const splitTween = createjs.Tween.get(secondLetter)
                     .to({
                         x: processingLetterBox.x + letterCenterX + secondLetterSlideDistance,
                         alpha: 0
-                    }, 500)
-                    .on("change", () => stage.update());
-            });
+                    }, 500);
+                splitTween.on("change", () => stage.update());
+                splitTween.call(() => {
+                    stage.update();
+                    if (onComplete) onComplete();
+                });
+                return splitTween;
+            }
+
+            function animateProcessedLetterToTarget() {
+                const verticalDistance = processingLetterSize * 0.25;
+                const moveAndFadeToProcessingPosition = () => {
+                    const processingPosition = currentWord.targetSlots[stepIndex].processingPosition;
+                    const targetBox = processingPosition && targetBoxRefs[Number(processingPosition) - 1];
+                    if (!targetBox) return;
+
+                    const targetCenterX = targetBox.x + letterWidth / 2;
+                    const targetCenterY = targetBox.y + letterHeight / 2;
+                    const currentVisualCenterX = firstLetter.x
+                        - firstLetter.regX * firstLetter.scaleX;
+                    const currentVisualCenterY = firstLetter.y
+                        - firstLetter.regY * firstLetter.scaleY;
+                    const moveX = targetCenterX - currentVisualCenterX;
+                    const moveY = targetCenterY - currentVisualCenterY;
+                    const movingToTarget = [firstLetter, secondLetter, firstLetterMask, secondLetterMask];
+
+                    // Move the clipped letter pieces and masks together, then fade
+                    // both letter pieces during the flight to the target slot.
+                    movingToTarget.forEach(part => {
+                        createjs.Tween.get(part)
+                            .to({x: part.x + moveX, y: part.y + moveY}, 500)
+                            .on("change", () => stage.update());
+                    });
+                    const fadeTweens = [firstLetter, secondLetter].map(letter =>
+                        createjs.Tween.get(letter)
+                            .to({alpha: 0}, 500)
+                            .on("change", () => stage.update())
+                    );
+                    fadeTweens[0].call(() => {
+                        firstLetter.visible = false;
+                        secondLetter.visible = false;
+                        firstLetterMask.visible = false;
+                        secondLetterMask.visible = false;
+                        stage.update();
+                    });
+                };
+
+                const shrinkAroundCutLines = () => {
+                    const targetScaleX = letterWidth / processingLetterSize;
+                    const targetScaleY = letterHeight / processingLetterSize;
+
+                    // Keep the clipped edge fixed by shrinking each letter around
+                    // its current mask boundary. The masks themselves do not scale.
+                    const firstBoundaryX = firstLetterMask.x
+                        + processingLetterSize * firstLetterMask.scaleX;
+                    const secondBoundaryX = secondLetterMask.x;
+                    const shrinkLetter = (letter, boundaryX) => {
+                        const originalX = letter.x;
+                        letter.regX = boundaryX - originalX;
+                        letter.x = boundaryX;
+                        createjs.Tween.get(letter)
+                            .to({scaleX: targetScaleX, scaleY: targetScaleY}, 400)
+                            .on("change", () => stage.update());
+                    };
+
+                    shrinkLetter(secondLetter, secondBoundaryX);
+                    shrinkLetter(firstLetter, firstBoundaryX);
+
+                    // Start the flight once the 400ms shrink has completed.
+                    createjs.Tween.get(firstLetter)
+                        .wait(400)
+                        .call(moveAndFadeToProcessingPosition);
+                };
+
+                [firstLetter, secondLetter, firstLetterMask, secondLetterMask].forEach(part => {
+                    createjs.Tween.get(part)
+                        .to({y: part.y - verticalDistance}, 400)
+                        .on("change", () => stage.update());
+                });
+                createjs.Tween.get(firstLetter)
+                    .wait(400)
+                    .call(shrinkAroundCutLines);
+            }
+
+            triggerToolAnimation = toolAnimation => {
+                if (toolAnimation === "axeSplit") {
+                    return axeSplit(processingLetter.text, hiddenRightRatio, animateProcessedLetterToTarget);
+                }
+
+                // Keep each tool animation name callable from tools.json. These animations
+                // can be replaced independently as the individual tool effects are designed.
+                const animation = createjs.Tween.get(firstLetter)
+                    .to({alpha: 0, scaleX: 1.15, scaleY: 1.15}, 180)
+                    .to({alpha: 1, scaleX: 1, scaleY: 1}, 180)
+                    .call(() => {
+                        stage.update();
+                        animateProcessedLetterToTarget();
+                    });
+                return animation;
+            };
             stage.addChild(processingLetterInteraction);
 
             stage.update();
@@ -219,7 +392,7 @@ frame.on("ready", () => {
         new Label({text: "Target Bar", size: 24, color: "#FFFFFF"})
             .loc(70, targetBarY + 15);
 
-        const letterData = ["?", "?", "?", "?"];
+        const letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
         const letterWidth = 85;
         const letterHeight = 85;
         const letterGap = 30; // Keep the current spacing between boxes.
@@ -229,23 +402,135 @@ frame.on("ready", () => {
 
         letterData.forEach((text, i) => {
             const letterBox = new createjs.Shape();
-            letterBox.graphics
-                .setStrokeStyle(4)
-                .setStrokeDash([6, 4])
-                .beginStroke("#FFFFFF")
-                .beginFill("rgba(245, 232, 200, 0.2)")
-                .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
+            if (currentWord.initial[i] === "_") {
+                letterBox.graphics
+                    .setStrokeStyle(4)
+                    .setStrokeDash([6, 4])
+                    .beginStroke("#FFFFFF")
+                    .beginFill("rgba(245, 232, 200, 0.2)")
+                    .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
+            }
             letterBox.x = letterStartX + i * (letterWidth + letterGap);
             letterBox.y = letterY;
             stage.addChild(letterBox);
+            targetBoxRefs.push(letterBox);
                 
-            addOutlinedText(
+            const textRef = addOutlinedText(
                 text,
                 "bold 50px Arial",
                 letterBox.x + letterWidth / 2,
                 letterBox.y + letterHeight / 2
             );
+            targetTextRefs.push(textRef);
         });
+
+        const targetBarInteraction = new createjs.Shape();
+        targetBarInteraction.graphics
+            .beginFill("rgba(255, 255, 255, 0.01)")
+            .drawRect(0, 0, targetBarWidth, targetBarHeight);
+        targetBarInteraction.x = targetBarX;
+        targetBarInteraction.y = targetBarY;
+        targetBarInteraction.cursor = "pointer";
+        targetBarInteraction.on("click", () => {
+            const step = currentWord.targetSlots[stepIndex];
+            if (step) animateTargetPositionsToConjunct(step);
+        });
+        stage.addChild(targetBarInteraction);
+
+        function updateProcessingLetter(firstLetter, secondLetter, processingLetter) {
+            const step = currentWord.targetSlots[stepIndex];
+            const position = step && step.processingPosition;
+            const text = position === "" || position === undefined
+                ? ""
+                : currentWord.letters[Number(position) - 1];
+            processingLetter.text = text;
+            firstLetter.text = text;
+            secondLetter.text = text;
+        }
+
+        function animateTargetPositionsToConjunct(step, onComplete) {
+            const positions = step.targetPositions.map(Number);
+            const targetBoxes = positions
+                .map(position => targetBoxRefs[position - 1])
+                .filter(Boolean);
+            if (!targetBoxes.length) {
+                if (onComplete) onComplete();
+                return;
+            }
+
+            const firstPosition = Math.min(...positions);
+            const lastPosition = Math.max(...positions);
+            const firstSlotX = letterStartX + (firstPosition - 1) * (letterWidth + letterGap);
+            const lastSlotX = letterStartX + (lastPosition - 1) * (letterWidth + letterGap);
+            const centerX = (firstSlotX + lastSlotX + letterWidth) / 2;
+            const centerY = letterY + letterHeight / 2;
+            const collapseTargets = [];
+
+            positions.forEach(position => {
+                const textRef = targetTextRefs[position - 1];
+                const box = targetBoxRefs[position - 1];
+                const slotX = letterStartX + (position - 1) * (letterWidth + letterGap);
+                if (textRef) {
+                    [textRef.textOutline, textRef.textFill].forEach(text => {
+                        text.x = slotX + letterWidth / 2;
+                        text.y = centerY;
+                        text.scaleX = 1;
+                        text.scaleY = 1;
+                        text.alpha = 1;
+                    });
+                    collapseTargets.push(textRef.textOutline, textRef.textFill);
+                }
+                if (box) {
+                    box.regX = letterWidth / 2;
+                    box.regY = letterHeight / 2;
+                    box.x = slotX + letterWidth / 2;
+                    box.y = centerY;
+                    box.scaleX = 1;
+                    box.scaleY = 1;
+                    collapseTargets.push(box);
+                }
+            });
+
+            const finishCollapse = () => {
+                collapseTargets.forEach(target => { target.visible = false; });
+
+                const replacementPosition = positions[0];
+                const replacementText = targetTextRefs[replacementPosition - 1];
+                if (replacementText) {
+                    replacementText.setText(step.targetConjunct);
+                    replacementText.textOutline.x = letterStartX
+                        + (replacementPosition - 1) * (letterWidth + letterGap) + letterWidth / 2;
+                    replacementText.textFill.x = replacementText.textOutline.x;
+                    replacementText.textOutline.y = centerY;
+                    replacementText.textFill.y = centerY;
+                    [replacementText.textOutline, replacementText.textFill].forEach(text => {
+                        text.scaleX = 1;
+                        text.scaleY = 1;
+                        text.alpha = 1;
+                        text.visible = true;
+                    });
+                    stage.addChild(replacementText.textOutline, replacementText.textFill);
+                }
+                stage.update();
+                if (onComplete) onComplete();
+            };
+
+            let remainingCollapseTweens = collapseTargets.length;
+            collapseTargets.forEach(target => {
+                target.visible = true;
+                createjs.Tween.get(target)
+                    .to({x: centerX, y: centerY, scaleX: 0, scaleY: 0}, 400)
+                    .on("change", () => stage.update())
+                    .call(() => {
+                        remainingCollapseTweens -= 1;
+                        if (remainingCollapseTweens === 0) finishCollapse();
+                    });
+            });
+
+            if (!remainingCollapseTweens) {
+                finishCollapse();
+            }
+        }
 
         // ==========================================
         // 2. Bottom Tools Area
@@ -257,7 +542,13 @@ frame.on("ready", () => {
         new Label({text: "Tools Area", size: 24, color: "#FFFFFF"})
             .loc(70, toolsAreaY + 15);
 
-        const toolCount = 5;
+        // The level controls which tools are visible. The word-level property is kept as a fallback
+        // so older level files continue to work.
+        const toolNamesForLevel = level.toolsOptions || currentWord.toolsOptions || [];
+        const availableTools = toolNamesForLevel
+            .map(name => toolData.find(toolInfo => toolInfo.toolName.toLowerCase() === name.toLowerCase()))
+            .filter(Boolean);
+        const toolCount = availableTools.length;
         const toolGap = 0;
         const toolTop = toolsAreaY + toolsAreaHeight * 0.25;
         const toolTargetHeight = toolsAreaHeight * 0.7;
@@ -274,11 +565,10 @@ frame.on("ready", () => {
         const toolGroupWidth = toolWidth * toolCount + toolGap * (toolCount - 1);
         const toolStartX = toolsAreaX + (toolsAreaWidth - toolGroupWidth) / 2;
         // Tool order: axe, scissors, gem, hook, hammer.
-        const toolAssets = ["axe.png", "scissors.png", "gem.png", "hook.png", "hammer.png"];
-        const toolNames = ["Axe", "Scissors", "Gem", "Hook", "Hammer"];
         const toolCenterY = toolTop; // Align the tool center with the top edge of its Tool frame.
 
         for (let i = 0; i < toolCount; i++) {
+            const toolInfo = availableTools[i];
             const toolX = toolStartX + i * (toolWidth + toolGap);
             // Keep the Tool frame fixed; do not add drag events to it.
             let toolBox = new createjs.Bitmap("assets/toolBackground.png");
@@ -290,7 +580,7 @@ frame.on("ready", () => {
             stage.addChild(toolBox);
 
             // Preserve the tool image aspect ratio and center it in its Tool frame.
-            const tool = new createjs.Bitmap("assets/" + toolAssets[i]);
+            const tool = new createjs.Bitmap("assets/" + toolInfo.asset);
             const originalToolX = toolX + toolWidth / 2;
             const originalToolY = toolCenterY * 1.01;
 
@@ -313,6 +603,7 @@ frame.on("ready", () => {
             tool.image.onload = setupTool;
             if (tool.image.complete) setupTool();
             stage.addChild(tool);
+            toolDisplayRefs.push(tool);
 
             // Center the tool name and effect text in the lower text area.
             const toolTextCenterX = toolBox.x + toolWidth / 2 ;
@@ -321,13 +612,13 @@ frame.on("ready", () => {
             const toolTextCenterY = (toolTextAreaTop + toolTextAreaBottom) / 2;
 
             addOutlinedText(
-                toolNames[i],
+                toolInfo.label || toolInfo.toolName,
                 "bold 21px Arial",
                 toolTextCenterX,
                 toolTextCenterY - 20
             );
             addOutlinedText(
-                "tool effect",
+                toolInfo.toolEffect || "tool effect",
                 "16px Arial",
                 toolTextCenterX,
                 toolTextCenterY + 5
@@ -354,15 +645,30 @@ frame.on("ready", () => {
                 stage.update();
             });
             tool.on("mousedown", (event) => {
+                // Keep the dragged tool above every other visual layer.
+                stage.addChild(tool);
                 offsetX = tool.x - event.stageX;
                 offsetY = tool.y - event.stageY;
+                stage.update();
             });
             tool.on("pressmove", (event) => {
                 tool.x = event.stageX + offsetX;
                 tool.y = event.stageY + offsetY;
                 stage.update();
             });
-            tool.on("pressup", () => {
+            tool.on("pressup", (event) => {
+                const step = currentWord.targetSlots[stepIndex];
+                const droppedOnProcessingLetter = processingLetterBoxRef &&
+                    event.stageX >= processingLetterBoxRef.x &&
+                    event.stageX <= processingLetterBoxRef.x + processingLetterSizeRef &&
+                    event.stageY >= processingLetterBoxRef.y &&
+                    event.stageY <= processingLetterBoxRef.y + processingLetterSizeRef;
+                const isCorrectTool = step &&
+                    toolInfo.toolName.toLowerCase() === step.tool.toLowerCase();
+
+                if (droppedOnProcessingLetter && isCorrectTool && triggerToolAnimation) {
+                    triggerToolAnimation(toolInfo.toolAnimation);
+                }
                 createjs.Tween.get(tool)
                     .to({x: originalToolX, y: originalToolY}, 200)
                     .call(() => stage.update());
@@ -522,14 +828,8 @@ frame.on("ready", () => {
         progressFill.y = progressBar.y;
         stage.addChild(progressFill);
 
-        const completedWorks = [
-            "1. Completed Work",
-            "2. Completed Work",
-            "3. Completed Work",
-            "4. Completed Work",
-            "5. Completed Work"
-        ];
-        completedWorks.forEach((work, i) => {
+        const selectedWorks = words.map((word, i) => `${i + 1}. ${word.word}`);
+        selectedWorks.forEach((work, i) => {
             const workText = new createjs.Text(work, "13px Arial", "#FFFFFF");
             workText.textAlign = "left";
             workText.textBaseline = "middle";
@@ -538,6 +838,8 @@ frame.on("ready", () => {
             stage.addChild(workText);
         });
 
+        // Keep tool artwork above the rest of the scene, including the info panel.
+        toolDisplayRefs.forEach(tool => stage.addChild(tool));
         stage.update(); // Refresh the stage.
     });
 });
