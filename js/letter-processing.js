@@ -87,7 +87,7 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
 
 SanskritSmith.createConjunctAnimator = ({stage, createjs, targetArea, targetBarX, targetBarWidth, addOutlinedText}) => {
     let isAnimating = false;
-const animate = (step, onComplete, completeMode = false) => {
+const animateConjunctPositions = (step, onComplete, completeMode = false) => {
     console.log("[targetConjunct] animation started", {
         targetPositions: step && step.targetPositions,
         targetConjunct: step && step.targetConjunct
@@ -179,9 +179,10 @@ const animate = (step, onComplete, completeMode = false) => {
         const replacementX = isFinalStep
             ? targetBarX + targetBarWidth / 2
             : SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap);
+        const replacementFontSize = isFinalStep ? 60 : 50;
         const replacementText = addOutlinedText(
             step.targetConjunct || "",
-            "bold 50px Arial",
+            `bold ${replacementFontSize}px Arial`,
             replacementX,
             centerY
         );
@@ -191,21 +192,21 @@ const animate = (step, onComplete, completeMode = false) => {
             const finishDisplay = () => {
                 if (displayFinished) return;
                 displayFinished = true;
-                isAnimating = false;
-                stage.update();
-                if (onComplete) onComplete();
+                window.setTimeout(() => {
+                    isAnimating = false;
+                    stage.update();
+                    if (onComplete) onComplete();
+                }, 1000);
             };
             [replacementText.textOutline, replacementText.textFill].forEach(text => {
                 text.alpha = 0;
+                text.scaleX = 0.75;
+                text.scaleY = 0.75;
+                createjs.Tween.get(text)
+                    .to({alpha: 1, scaleX: 1.3, scaleY: 1.3}, 525)
+                    .on("change", () => stage.update());
             });
-            createjs.Tween.get(replacementText.textOutline)
-                .to({alpha: 1}, 350)
-                .on("change", () => stage.update());
-            const fillTween = createjs.Tween.get(replacementText.textFill)
-                .to({alpha: 1}, 350)
-                .on("change", () => stage.update());
-            fillTween.call(finishDisplay);
-            window.setTimeout(finishDisplay, 400);
+            window.setTimeout(finishDisplay, 575);
             stage.update();
             return;
         }
@@ -255,7 +256,14 @@ const animate = (step, onComplete, completeMode = false) => {
 }
 
     return {
-        animate,
+        animateTargetPositionsToConjunct(step, onComplete) {
+            animateConjunctPositions(step, onComplete, false);
+        },
+        animateCompleteConjunct(step, onComplete) {
+            window.setTimeout(() => {
+                animateConjunctPositions(step, onComplete, true);
+            }, 500);
+        },
         reset() {
             isAnimating = false;
         }

@@ -452,25 +452,58 @@ SanskritSmith.createGameUI = ({
     infoTitle.y = 68;
     stage.addChild(infoTitle);
 
-    const controlButtonWidth = 90;
+    let showHowToPlayPopup = null;
     const controlButtonHeight = 24;
     const controlButtonGap = 10;
-    const controlButtonRowWidth = controlButtonWidth * 3 + controlButtonGap * 2;
-    ["How to Play", "Music", "SFX"].forEach((label, index) => {
+    const controlButtons = [
+        {label: "How to Play", width: 90},
+        {label: "Music", icon: "🎵", width: controlButtonHeight},
+        {label: "SFX", icon: "🔔", width: controlButtonHeight}
+    ];
+    const controlButtonRowWidth = controlButtons.reduce((width, item) => width + item.width, 0)
+        + controlButtonGap * (controlButtons.length - 1);
+    let controlButtonX = infoSectionX + infoSectionWidth - controlButtonRowWidth;
+
+    controlButtons.forEach(({label, icon, width}) => {
         const button = new createjs.Shape();
         button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#000000")
-            .drawRoundRect(0, 0, controlButtonWidth, controlButtonHeight, 6);
-        button.x = infoAreaX + (infoAreaWidth - controlButtonRowWidth) / 2
-            + index * (controlButtonWidth + controlButtonGap);
+            .drawRoundRect(0, 0, width, controlButtonHeight, 6);
+        button.x = controlButtonX;
         button.y = 150 - controlButtonHeight * 1.5;
         button.cursor = "pointer";
         stage.addChild(button);
-        const buttonText = new createjs.Text(label, "bold 12px Arial", "#000000");
+        if (label === "How to Play") {
+            button.on("click", () => {
+                if (showHowToPlayPopup) showHowToPlayPopup();
+            });
+        }
+
+        const buttonText = new createjs.Text(icon || label, icon ? "13px Arial" : "bold 12px Arial", "#000000");
         buttonText.textAlign = "center";
         buttonText.textBaseline = "middle";
-        buttonText.x = button.x + controlButtonWidth / 2;
+        buttonText.x = button.x + width / 2;
         buttonText.y = button.y + controlButtonHeight / 2;
+        buttonText.mouseEnabled = false;
         stage.addChild(buttonText);
+
+        if (icon) {
+            let enabled = true;
+            const offMark = new createjs.Text("X", "bold 15px Arial", "#E00000");
+            offMark.textAlign = "center";
+            offMark.textBaseline = "middle";
+            offMark.x = buttonText.x;
+            offMark.y = buttonText.y;
+            offMark.visible = false;
+            offMark.mouseEnabled = false;
+            stage.addChild(offMark);
+            button.on("click", () => {
+                enabled = !enabled;
+                offMark.visible = !enabled;
+                stage.update();
+            });
+        }
+
+        controlButtonX += width + controlButtonGap;
     });
 
     SanskritSmith.addRoundedPanel(stage, createjs, {
@@ -493,9 +526,240 @@ SanskritSmith.createGameUI = ({
     const statusLabelX = 1020;
     const statusValueX = 1130;
     addText("Today's Income", "bold 22px Arial", statusLabelX, 180, "right");
-    addText("$0", "bold 22px Arial", statusValueX, 180, "right");
+    const todayIncomeLabel = addText("$0", "bold 22px Arial", statusValueX, 180, "right");
     addText("Today's Completed", "15px Arial", statusLabelX, 215, "right");
-    addText("0", "bold 18px Arial", statusValueX, 215, "right");
+    const todayCompletedLabel = addText("0", "bold 18px Arial", statusValueX, 215, "right");
+    let todayIncome = 0;
+    let todayCompleted = 0;
+
+    const recordDailyCompletion = amount => {
+        todayIncome += amount;
+        todayCompleted += 1;
+        todayIncomeLabel.text = todayIncome < 0 ? `-$${Math.abs(todayIncome)}` : `$${todayIncome}`;
+        todayCompletedLabel.text = String(todayCompleted);
+        stage.update();
+    };
+
+    const showWordScorePopup = ({earned, breakdown, onContinue}) => {
+        const modalObjects = [];
+        const dropdownVisibility = levelDropdown.style.visibility;
+        levelDropdown.disabled = true;
+        levelDropdown.style.visibility = "hidden";
+        const overlay = new createjs.Shape();
+        overlay.graphics.beginFill("rgba(0, 0, 0, 0.68)").drawRect(0, 0, frame.width, frame.height);
+        overlay.on("click", event => event.stopPropagation());
+        stage.addChild(overlay);
+        modalObjects.push(overlay);
+
+        const panelWidth = 620;
+        const panelHeight = Math.max(340, 205 + breakdown.length * 42);
+        const panelX = (frame.width - panelWidth) / 2;
+        const panelY = (frame.height - panelHeight) / 2;
+        const panel = new createjs.Shape();
+        panel.graphics.beginFill("rgba(94, 94, 94, 0.6)").setStrokeStyle(4).beginStroke("#333333")
+            .drawRoundRect(0, 0, panelWidth, panelHeight, 24);
+        panel.x = panelX;
+        panel.y = panelY;
+        stage.addChild(panel);
+        modalObjects.push(panel);
+
+        const addModalText = (text, font, x, y, color = "#FFFFFF", align = "center") => {
+            const label = new createjs.Text(text, font, color);
+            label.textAlign = align;
+            label.textBaseline = "middle";
+            label.x = x;
+            label.y = y;
+            label.mouseEnabled = false;
+            stage.addChild(label);
+            modalObjects.push(label);
+            return label;
+        };
+        const centerX = frame.width / 2;
+        const earnedText = earned < 0 ? `-$${Math.abs(earned)}` : `$${earned}`;
+        const headline = `You earned ${earnedText}`;
+        const headlineY = panelY + 78;
+        const headlineOutline = new createjs.Text(headline, "bold 42px Arial", "#000000");
+        headlineOutline.textAlign = "center";
+        headlineOutline.textBaseline = "middle";
+        headlineOutline.outline = 5;
+        headlineOutline.x = centerX;
+        headlineOutline.y = headlineY;
+        headlineOutline.mouseEnabled = false;
+        stage.addChild(headlineOutline);
+        modalObjects.push(headlineOutline);
+        addModalText(headline, "bold 42px Arial", centerX, headlineY, "#FFF2A8");
+        breakdown.forEach((item, index) => {
+            const rowY = panelY + 145 + index * 42;
+            addModalText(`${item.label}:`, "19px Arial", centerX + 10, rowY, "#FFFFFF", "right");
+            addModalText(item.value, "19px Arial", centerX + 210, rowY, "#FFFFFF", "right");
+        });
+
+        const buttonWidth = 180;
+        const buttonHeight = 48;
+        const button = new createjs.Shape();
+        button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#111111")
+            .drawRoundRect(0, 0, buttonWidth, buttonHeight, 12);
+        button.x = centerX - buttonWidth / 2;
+        button.y = panelY + panelHeight - 75;
+        button.cursor = "pointer";
+        stage.addChild(button);
+        modalObjects.push(button);
+        addModalText("Forge Next", "bold 20px Arial", centerX, button.y + buttonHeight / 2, "#111111");
+        button.on("click", () => {
+            modalObjects.forEach(object => stage.removeChild(object));
+            levelDropdown.disabled = false;
+            levelDropdown.style.visibility = dropdownVisibility;
+            stage.update();
+            if (onContinue) onContinue();
+        });
+        stage.update();
+    };
+
+    showHowToPlayPopup = () => {
+        const modalObjects = [];
+        const dropdownVisibility = levelDropdown.style.visibility;
+        levelDropdown.disabled = true;
+        levelDropdown.style.visibility = "hidden";
+
+        const overlay = new createjs.Shape();
+        overlay.graphics.beginFill("rgba(0, 0, 0, 0.8)").drawRect(0, 0, frame.width, frame.height);
+        stage.addChild(overlay);
+        modalObjects.push(overlay);
+
+        const panelWidth = 720;
+        const panelHeight = 430;
+        const panelX = (frame.width - panelWidth) / 2;
+        const panelY = (frame.height - panelHeight) / 2;
+        const panel = new createjs.Shape();
+        panel.graphics.beginFill("rgba(200, 200, 200, 0.5)").setStrokeStyle(4).beginStroke("#333333")
+            .drawRoundRect(0, 0, panelWidth, panelHeight, 24);
+        panel.x = panelX;
+        panel.y = panelY;
+        stage.addChild(panel);
+        modalObjects.push(panel);
+
+        const addPopupText = (text, font, x, y, color = "#FFFFFF", align = "center") => {
+            const label = new createjs.Text(text, font, color);
+            label.textAlign = align;
+            label.textBaseline = "middle";
+            label.x = x;
+            label.y = y;
+            label.mouseEnabled = false;
+            stage.addChild(label);
+            modalObjects.push(label);
+            return label;
+        };
+        addPopupText("How to Play", "bold 34px Arial", frame.width / 2, panelY + 55, "#FFF2A8");
+
+        const contentX = panelX + 45;
+        const contentY = panelY + 115;
+        const contentWidth = panelWidth - 100;
+        const viewportHeight = panelHeight - 220;
+        const instructions = new createjs.Text(
+            SanskritSmith.howToPlay.map((instruction, index) => `${index + 1}. ${instruction}`).join("\n"),
+            "18px Arial",
+            "#FFFFFF"
+        );
+        instructions.textAlign = "left";
+        instructions.textBaseline = "top";
+        instructions.lineWidth = contentWidth;
+        instructions.lineHeight = 28;
+        instructions.x = 0;
+        instructions.y = 0;
+        instructions.mouseEnabled = false;
+        const contentViewport = new createjs.Container();
+        contentViewport.x = contentX;
+        contentViewport.y = contentY;
+        contentViewport.mouseEnabled = false;
+        const contentMask = new createjs.Shape();
+        contentMask.graphics.beginFill("#000000").drawRect(0, 0, contentWidth, viewportHeight);
+        contentMask.x = contentX;
+        contentMask.y = contentY;
+        contentViewport.mask = contentMask;
+        contentViewport.addChild(instructions);
+        stage.addChild(contentViewport);
+        modalObjects.push(contentViewport);
+
+        const contentHeight = instructions.getMetrics().height;
+        const maxScroll = Math.max(0, contentHeight - viewportHeight);
+        const scrollbarX = panelX + panelWidth - 38;
+        const track = new createjs.Shape();
+        track.graphics.beginFill("rgba(30, 30, 30, 0.35)").drawRoundRect(0, 0, 8, viewportHeight, 4);
+        track.x = scrollbarX;
+        track.y = contentY;
+        track.visible = maxScroll > 0;
+        stage.addChild(track);
+        modalObjects.push(track);
+
+        const thumbHeight = maxScroll > 0
+            ? Math.max(32, viewportHeight * viewportHeight / contentHeight)
+            : viewportHeight;
+        const thumb = new createjs.Shape();
+        thumb.graphics.beginFill("#FFF2A8").drawRoundRect(0, 0, 8, thumbHeight, 4);
+        thumb.x = scrollbarX;
+        thumb.y = contentY;
+        thumb.visible = maxScroll > 0;
+        thumb.cursor = "pointer";
+        stage.addChild(thumb);
+        modalObjects.push(thumb);
+
+        let scrollOffset = 0;
+        const updateScroll = value => {
+            scrollOffset = Math.max(0, Math.min(maxScroll, value));
+            instructions.y = -scrollOffset;
+            const thumbTravel = viewportHeight - thumbHeight;
+            thumb.y = contentY + (maxScroll ? scrollOffset / maxScroll * thumbTravel : 0);
+            stage.update();
+        };
+        let dragStartY = 0;
+        let dragStartOffset = 0;
+        thumb.on("mousedown", event => {
+            dragStartY = event.stageY;
+            dragStartOffset = scrollOffset;
+        });
+        thumb.on("pressmove", event => {
+            const thumbTravel = viewportHeight - thumbHeight;
+            if (thumbTravel <= 0) return;
+            updateScroll(dragStartOffset + (event.stageY - dragStartY) / thumbTravel * maxScroll);
+        });
+        track.on("click", event => {
+            if (maxScroll <= 0) return;
+            updateScroll(scrollOffset + (event.stageY < thumb.y ? -viewportHeight : viewportHeight));
+        });
+        const handleWheel = event => {
+            const bounds = stage.canvas.getBoundingClientRect();
+            const scaleX = frame.width / bounds.width;
+            const scaleY = frame.height / bounds.height;
+            const pointerX = (event.clientX - bounds.left) * scaleX;
+            const pointerY = (event.clientY - bounds.top) * scaleY;
+            const insideViewport = pointerX >= panelX && pointerX <= panelX + panelWidth
+                && pointerY >= contentY && pointerY <= contentY + viewportHeight;
+            if (!insideViewport || maxScroll <= 0) return;
+            event.preventDefault();
+            updateScroll(scrollOffset + event.deltaY);
+        };
+        stage.canvas.addEventListener("wheel", handleWheel, {passive: false});
+
+        const buttonWidth = 160;
+        const buttonHeight = 44;
+        const button = new createjs.Shape();
+        button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#111111")
+            .drawRoundRect(0, 0, buttonWidth, buttonHeight, 12);
+        button.x = frame.width / 2 - buttonWidth / 2;
+        button.y = panelY + panelHeight - 65;
+        button.cursor = "pointer";
+        stage.addChild(button);
+        modalObjects.push(button);
+        addPopupText("Close", "bold 19px Arial", frame.width / 2, button.y + buttonHeight / 2, "#111111");
+        button.on("click", () => {
+            stage.canvas.removeEventListener("wheel", handleWheel);
+            modalObjects.forEach(object => stage.removeChild(object));
+            levelDropdown.disabled = false;
+            levelDropdown.style.visibility = dropdownVisibility;
+            stage.update();
+        });
+        stage.update();
+    };
 
     const hintButtonWidth = 76;
     const hintButtonHeight = 24;
@@ -640,6 +904,8 @@ SanskritSmith.createGameUI = ({
 
     return {
         updateCampaignStatus,
+        recordDailyCompletion,
+        showWordScorePopup,
         updateHintButton,
         updateAttemptsLabel,
         updateLevelDropdown,

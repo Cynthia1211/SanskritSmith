@@ -8,6 +8,7 @@
 <!-- Standard ZIM 016 setup: ZIM depends on CreateJS -->
 <script src="https://zimjs.org/cdn/1.5/createjs.js"></script>
 <script src="https://zimjs.org/cdn/016/zim_min.js"></script>
+<script src="js/setting.js"></script>
 <script src="js/game-flow.js"></script>
 <script src="js/game-layout.js"></script>
 <script src="js/helpers.js"></script>
@@ -82,6 +83,7 @@ frame.on("ready", () => {
         let shakeProcessingLetter = null;
         let hintCount = 0;
         let attemptsRemaining = 3;
+        let attemptsUsedThisWord = 0;
         const hintedWordIndices = new Set();
         const stage = frame.stage;
         stage.enableMouseOver();
@@ -163,6 +165,29 @@ frame.on("ready", () => {
             const getPartsMode = step => step?.tool?.toLowerCase() === "axe" ? "axe" : "single";
             processingParts.reset(processingLetter.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
 
+            const finishWordWithPopup = () => {
+                const scoreSettings = SanskritSmith.SCORE_SETTINGS;
+                const hintUses = hintedWordIndices.has(wordIndex) ? 1 : 0;
+                const hintDeduction = hintUses * scoreSettings.hintDeductScore;
+                const attemptsDeduction = attemptsUsedThisWord * scoreSettings.AttemptsDeductScore;
+                const clearsLevel = wordIndex === words.length - 1;
+                const levelReward = clearsLevel ? scoreSettings.levelScore : 0;
+                const earned = scoreSettings.wordScore + levelReward - hintDeduction - attemptsDeduction;
+                const breakdown = [
+                    {label: "Word completion", value: `$${scoreSettings.wordScore}`},
+                    {label: "Hint use", value: hintDeduction ? `-$${hintDeduction}` : "$0"},
+                    {label: "Attempts use", value: attemptsDeduction ? `-$${attemptsDeduction}` : "$0"}
+                ];
+                if (clearsLevel) breakdown.push({label: "Level completion", value: `+$${levelReward}`});
+
+                gameUI.recordDailyCompletion(earned);
+                gameUI.showWordScorePopup({
+                    earned,
+                    breakdown,
+                    onContinue: startNextWord
+                });
+            };
+
             advanceToNextProcessingStep = () => {
                 const nextStep = campaign.advanceStep();
                 stepIndex = campaign.stepIndex;
@@ -176,9 +201,7 @@ frame.on("ready", () => {
                     processingParts.hide();
                     updateProcessingLetter(processingParts, processingLetterRef);
                     stage.update();
-                    animateCompleteConjunct(nextStep, () => {
-                        startNextWord();
-                    });
+                    targetAnimator.animateCompleteConjunct(nextStep, finishWordWithPopup);
                     return;
                 }
 
@@ -220,6 +243,7 @@ frame.on("ready", () => {
                 wordIndex = campaign.wordIndex;
                 stepIndex = campaign.stepIndex;
                 currentWord = campaign.word;
+                attemptsUsedThisWord = 0;
                 targetAnimator.reset();
                 targetArea.render(currentWord);
                 targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
@@ -247,6 +271,7 @@ frame.on("ready", () => {
                 wordIndex = campaign.wordIndex;
                 stepIndex = campaign.stepIndex;
                 currentWord = campaign.word;
+                attemptsUsedThisWord = 0;
                 targetAnimator.reset();
                 hintCount = 0;
                 hintedWordIndices.clear();
@@ -279,7 +304,8 @@ frame.on("ready", () => {
                 letterHeight,
                 getCurrentStep: () => currentWord.targetSlots[stepIndex],
                 getTargetBox: position => targetBoxRefs[position - 1],
-                animateTargetPositionsToConjunct,
+                animateTargetPositionsToConjunct: (step, onComplete) =>
+                    targetAnimator.animateTargetPositionsToConjunct(step, onComplete),
                 advanceToNextStep: () => advanceToNextProcessingStep(),
                 defaultHiddenRightRatio: hiddenRightRatio
             });
@@ -351,8 +377,8 @@ frame.on("ready", () => {
             });
             if (!step) return;
             const isCompleteStep = SanskritSmith.isCompleteTargetStep(step);
-            if (isCompleteStep) animateCompleteConjunct(step);
-            else animateTargetPositionsToConjunct(step);
+            if (isCompleteStep) targetAnimator.animateCompleteConjunct(step);
+            else targetAnimator.animateTargetPositionsToConjunct(step);
         });
         stage.addChild(targetBarInteraction);
 
@@ -364,16 +390,6 @@ frame.on("ready", () => {
                 : currentWord.letters[Number(position) - 1];
             processingLetter.text = text;
             letterParts.setText(text);
-        }
-
-        function animateTargetPositionsToConjunct(step, onComplete) {
-            targetAnimator.animate(step, onComplete, false);
-        }
-
-        function animateCompleteConjunct(step, onComplete) {
-            window.setTimeout(() => {
-                targetAnimator.animate(step, onComplete, true);
-            }, 500);
         }
 
         const toolArea = SanskritSmith.createToolArea({
@@ -396,6 +412,7 @@ frame.on("ready", () => {
                 if (shakeProcessingLetter) shakeProcessingLetter();
                 if (attemptsRemaining <= 0) return;
                 attemptsRemaining -= 1;
+                attemptsUsedThisWord += 1;
                 gameUI.updateAttemptsLabel();
             }
         });
