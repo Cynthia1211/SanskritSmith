@@ -8,11 +8,12 @@
 <!-- Standard ZIM 016 setup: ZIM depends on CreateJS -->
 <script src="https://zimjs.org/cdn/1.5/createjs.js"></script>
 <script src="https://zimjs.org/cdn/016/zim_min.js"></script>
+<script src="js/setting.js"></script>
 <script src="js/game-flow.js"></script>
+<script src="js/game-layout.js"></script>
 <script src="js/helpers.js"></script>
+<script src="js/fetchLevels.js"></script>
 <script src="js/letter-processing.js"></script>
-<script src="js/target-layout.js"></script>
-<script src="js/tool-interactions.js"></script>
 
 <script>
 // Define the Frame using the current ZIM syntax.
@@ -23,15 +24,15 @@ const frame = new Frame({
     color: "#555555",
     outerColor: "#333333",
     assets: [
-        "background.jpeg",
-        "forgingStation.png",
-        "toolBackground.png",
-        "targetBackground.png",
-        "axe.png",
-        "gem.png",
-        "hammer.png",
-        "hook.png",
-        "scissors.png"
+        "game/background.jpeg",
+        "game/forgingStation.png",
+        "game/targetBackground.png",
+        "tools/toolBackground.png",
+        "tools/axe.png",
+        "tools/gem.png",
+        "tools/hammer.png",
+        "tools/hook.png",
+        "tools/scissors.png"
     ],
     path: "assets/"
 });
@@ -42,68 +43,62 @@ frame.on("ready", () => {
             const image = new Image();
             image.onload = () => resolve(image);
             image.onerror = reject;
-            image.src = "assets/targetBackground.png";
+            image.src = SanskritSmith.ASSET_PATHS.targetBackground;
         }),
         new Promise((resolve, reject) => {
             const image = new Image();
             image.onload = () => resolve(image);
             image.onerror = reject;
-            image.src = "assets/toolBackground.png";
+            image.src = SanskritSmith.ASSET_PATHS.toolBackground;
         })
     ]).then(async ([targetBarImage, toolFrameImage]) => {
-        const [levelData, toolData, characterRules] = await Promise.all([
-            SanskritSmith.loadJson("levels.json"),
+        const [levels, toolData, characterRules] = await Promise.all([
+            SanskritSmith.fetchLevels(),
             SanskritSmith.loadJson("tools.json"),
             SanskritSmith.loadJson("charactersRules.json")
         ]);
-        const campaign = SanskritSmith.createCampaign(levelData.levels);
+        const campaign = SanskritSmith.createCampaign(levels);
+        const levelProgressKey = "sanskrit-smith-max-unlocked-level";
+        let storedProgress = 0;
+        try {
+            storedProgress = Number(sessionStorage.getItem(levelProgressKey));
+        } catch (error) {
+            console.warn("[campaign] Session storage is unavailable; progress will last only until this page closes.");
+        }
+        let maxUnlockedLevel = Number.isInteger(storedProgress) && storedProgress >= 0
+            ? Math.min(storedProgress, levels.length - 1)
+            : 0;
+        let jumpToLevel = null;
         let level = campaign.level;
         let words = campaign.words;
         let wordIndex = campaign.wordIndex;
         let stepIndex = campaign.stepIndex;
         let currentWord = campaign.word;
-        let targetTextRefs = [];
-        let targetBoxRefs = [];
-        let targetConjunctAnimationRunning = false;
+        let targetAnimator = null;
         let processingLetterRef;
         let processingLetterBoxRef;
         let processingLetterSizeRef = 0;
         let triggerToolAnimation = null;
         let advanceToNextProcessingStep = null;
-        const toolDisplayRefs = [];
-        const toolDisplayGroups = [];
-        const selectedWordLabels = [];
-        let levelTitle;
-        let levelRequirement;
-        let progressFill;
+        let shakeProcessingLetter = null;
+        let hintCount = 0;
+        let attemptsRemaining = 3;
+        let attemptsUsedThisWord = 0;
+        const hintedWordIndices = new Set();
         const stage = frame.stage;
         stage.enableMouseOver();
 
-        // Main layout: left two-thirds for the game area, right one-third for the info area.
-        const leftAreaWidth = frame.width * 2 / 3;
-        const rightAreaX = leftAreaWidth;
-        const rightAreaWidth = frame.width - leftAreaWidth;
-
-        const targetBarImageWidth = targetBarImage.naturalWidth || targetBarImage.width;
-        const targetBarImageHeight = targetBarImage.naturalHeight || targetBarImage.height;
-        const targetBarTargetWidth = leftAreaWidth * 0.9;
-        const targetBarY = 5;
-        const targetBarScaleX = targetBarTargetWidth / targetBarImageWidth;
-        const targetBarScaleY = 150 / targetBarImageHeight;
-        const targetBarWidth = targetBarImageWidth * targetBarScaleX;
-        const targetBarHeight = targetBarImageHeight * targetBarScaleY;
-        const targetBarX = (leftAreaWidth - targetBarWidth) / 2;
-
-        const toolsAreaX = (leftAreaWidth - leftAreaWidth * 0.98) / 2;
-        const toolsAreaWidth = leftAreaWidth * 0.98;
-        const toolsAreaHeight = 150;
-        const toolsAreaY = frame.height - toolsAreaHeight;
+        const layout = SanskritSmith.calculateGameLayout(frame, targetBarImage);
+        const {
+            targetBarX, targetBarY, targetBarWidth, targetBarHeight,
+            toolsAreaX, toolsAreaWidth
+        } = layout;
 
         const addOutlinedText = (text, font, x, y) =>
             SanskritSmith.addOutlinedText(stage, text, font, x, y);
 
         // Preserve the background aspect ratio and crop from the center to avoid distortion.
-        const background = new Pic("background.jpeg")
+        const background = new Pic("game/background.jpeg")
             .addTo(stage)
             .scaleTo(frame.width, frame.height, "outside")
             .center();
@@ -111,7 +106,7 @@ frame.on("ready", () => {
 
         // Keep the forging station at its current scale, center it horizontally, and align it with the bottom of the canvas.
         // Add it before the UI so the Tools Area appears above it.
-        const forgingStation = new createjs.Bitmap("assets/forgingStation.png");
+        const forgingStation = new createjs.Bitmap(SanskritSmith.ASSET_PATHS.forgingStation);
         stage.addChildAt(forgingStation, 1);
         forgingStation.image.onload = () => {
             // Scale the image and align it horizontally and with the bottom edge of the canvas.
@@ -149,14 +144,55 @@ frame.on("ready", () => {
                 box: processingLetterBox,
                 size: processingLetterSize
             });
+            shakeProcessingLetter = () => {
+                const visibleParts = [
+                    ...processingParts.visual.letters,
+                    ...processingParts.visual.masks
+                ].filter(part => part.visible);
+                visibleParts.forEach(part => {
+                    const homeX = part.x;
+                    const homeY = part.y;
+                    createjs.Tween.removeTweens(part);
+                    createjs.Tween.get(part, {override: true})
+                        .to({x: homeX + 8}, 50)
+                        .to({x: homeX - 8}, 50)
+                        .to({x: homeX + 5}, 50)
+                        .to({x: homeX - 5}, 50)
+                        .to({x: homeX, y: homeY}, 50)
+                        .on("change", () => stage.update());
+                });
+            };
             const getPartsMode = step => step?.tool?.toLowerCase() === "axe" ? "axe" : "single";
             processingParts.reset(processingLetter.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
+
+            const finishWordWithPopup = () => {
+                const scoreSettings = SanskritSmith.SCORE_SETTINGS;
+                const hintUses = hintedWordIndices.has(wordIndex) ? 1 : 0;
+                const hintDeduction = hintUses * scoreSettings.hintDeductScore;
+                const attemptsDeduction = attemptsUsedThisWord * scoreSettings.AttemptsDeductScore;
+                const clearsLevel = wordIndex === words.length - 1;
+                const levelReward = clearsLevel ? scoreSettings.levelScore : 0;
+                const earned = scoreSettings.wordScore + levelReward - hintDeduction - attemptsDeduction;
+                const breakdown = [
+                    {label: "Word completion", value: `$${scoreSettings.wordScore}`},
+                    {label: "Hint use", value: hintDeduction ? `-$${hintDeduction}` : "$0"},
+                    {label: "Attempts use", value: attemptsDeduction ? `-$${attemptsDeduction}` : "$0"}
+                ];
+                if (clearsLevel) breakdown.push({label: "Level completion", value: `+$${levelReward}`});
+
+                gameUI.recordDailyCompletion(earned);
+                gameUI.showWordScorePopup({
+                    earned,
+                    breakdown,
+                    onContinue: startNextWord
+                });
+            };
 
             advanceToNextProcessingStep = () => {
                 const nextStep = campaign.advanceStep();
                 stepIndex = campaign.stepIndex;
                 if (!nextStep) return;
-                updateProcessingPositionGlow();
+                targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
 
                 const noProcessingPosition = nextStep.processingPosition === ""
                     || nextStep.processingPosition == null;
@@ -165,9 +201,7 @@ frame.on("ready", () => {
                     processingParts.hide();
                     updateProcessingLetter(processingParts, processingLetterRef);
                     stage.update();
-                    animateCompleteConjunct(nextStep, () => {
-                        startNextWord();
-                    });
+                    targetAnimator.animateCompleteConjunct(nextStep, finishWordWithPopup);
                     return;
                 }
 
@@ -184,24 +218,37 @@ frame.on("ready", () => {
                 const transition = campaign.completeWord();
                 if (transition === "complete") {
                     processingParts.hide();
-                    updateCampaignStatus(words.length);
-                    if (levelTitle) levelTitle.text = "All levels complete!";
-                    if (levelRequirement) levelRequirement.text = "You completed every selected word.";
-                    stage.update();
+                    gameUI.updateCampaignStatus(words.length);
+                    gameUI.showCampaignComplete();
                     console.info("[campaign] all levels completed");
                     return;
                 }
 
                 level = campaign.level;
+                if (transition === "level") {
+                    maxUnlockedLevel = Math.max(maxUnlockedLevel, campaign.levelIndex);
+                    hintCount = 0;
+                    hintedWordIndices.clear();
+                    gameUI.updateHintButton();
+                    attemptsRemaining = 3;
+                    gameUI.updateAttemptsLabel();
+                    try {
+                        sessionStorage.setItem(levelProgressKey, String(maxUnlockedLevel));
+                    } catch (error) {
+                        console.warn("[campaign] Could not save level progress in session storage.");
+                    }
+                    gameUI.updateLevelDropdown();
+                }
                 words = campaign.words;
                 wordIndex = campaign.wordIndex;
                 stepIndex = campaign.stepIndex;
                 currentWord = campaign.word;
-                targetConjunctAnimationRunning = false;
-                renderTargetLetters();
-                updateProcessingPositionGlow();
-                updateCampaignStatus();
-                updateToolsForLevel();
+                attemptsUsedThisWord = 0;
+                targetAnimator.reset();
+                targetArea.render(currentWord);
+                targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
+                gameUI.updateCampaignStatus();
+                toolArea.updateForLevel();
 
                 processingParts.reset(
                     processingLetterRef.text,
@@ -215,6 +262,30 @@ frame.on("ready", () => {
                     wordIndex,
                     word: currentWord.word
                 });
+            };
+
+            jumpToLevel = index => {
+                if (index > maxUnlockedLevel || !campaign.startLevel(index)) return false;
+                level = campaign.level;
+                words = campaign.words;
+                wordIndex = campaign.wordIndex;
+                stepIndex = campaign.stepIndex;
+                currentWord = campaign.word;
+                attemptsUsedThisWord = 0;
+                targetAnimator.reset();
+                hintCount = 0;
+                hintedWordIndices.clear();
+                gameUI.updateHintButton();
+                attemptsRemaining = 3;
+                gameUI.updateAttemptsLabel();
+                targetArea.render(currentWord);
+                targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
+                gameUI.updateCampaignStatus();
+                toolArea.updateForLevel();
+                processingParts.reset(processingLetterRef.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
+                updateProcessingLetter(processingParts, processingLetterRef);
+                stage.update();
+                return true;
             };
 
             const processingLetterInteraction = new createjs.Shape();
@@ -233,14 +304,15 @@ frame.on("ready", () => {
                 letterHeight,
                 getCurrentStep: () => currentWord.targetSlots[stepIndex],
                 getTargetBox: position => targetBoxRefs[position - 1],
-                animateTargetPositionsToConjunct,
+                animateTargetPositionsToConjunct: (step, onComplete) =>
+                    targetAnimator.animateTargetPositionsToConjunct(step, onComplete),
                 advanceToNextStep: () => advanceToNextProcessingStep(),
                 defaultHiddenRightRatio: hiddenRightRatio
             });
 
             triggerToolAnimation = toolName => {
                 const step = currentWord.targetSlots[stepIndex];
-                const rulesForLetter = characterRules[processingLetter.text] || [];
+                const rulesForLetter = characterRules[processingLetter.text]?.tools || [];
                 const rule = rulesForLetter.find(candidate =>
                     candidate.tool
                     && step?.tool
@@ -269,95 +341,25 @@ frame.on("ready", () => {
         // ==========================================
         // 1. Top Target Bar area
         // ==========================================
-        // Stretch targetBackground.png to fill the existing Target Bar dimensions.
-        const targetBar = new createjs.Bitmap("assets/targetBackground.png");
-        targetBar.x = targetBarX;
-        targetBar.y = targetBarY;
-        targetBar.scaleX = targetBarScaleX;
-        targetBar.scaleY = targetBarScaleY;
-        targetBar.image.onload = () => stage.update();
-        stage.addChild(targetBar);
-        
-        let letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
-        const letterWidth = 85;
-        const letterHeight = 85;
-        const letterGap = 30; // Keep the current spacing between boxes.
-        const processingPositionGlow = new createjs.Shape();
-        processingPositionGlow.graphics
-            .setStrokeStyle(5)
-            .beginStroke("#FFD700")
-            .drawRoundRect(-4, -4, letterWidth + 8, letterHeight + 8, 15);
-        processingPositionGlow.visible = false;
-        processingPositionGlow.mouseEnabled = false;
-        stage.addChild(processingPositionGlow);
-        let letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
-        let letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
-        const letterY = targetBarY + targetBarHeight / 2 - letterHeight / 2;
-
-        function renderTargetLetters() {
-            targetTextRefs.forEach(textRef => {
-                if (!textRef) return;
-                [textRef.textOutline, textRef.textFill].forEach(text => {
-                    createjs.Tween.removeTweens(text);
-                    stage.removeChild(text);
-                });
-            });
-            targetBoxRefs.forEach(box => {
-                createjs.Tween.removeTweens(box);
-                stage.removeChild(box);
-            });
-            targetTextRefs = [];
-            targetBoxRefs = [];
-
-            letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
-            letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
-            letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
-
-            letterData.forEach((text, i) => {
-                const letterBox = new createjs.Shape();
-                if (currentWord.initial[i] === "_") {
-                    letterBox.graphics
-                        .setStrokeStyle(4)
-                        .setStrokeDash([6, 4])
-                        .beginStroke("#FFFFFF")
-                        .beginFill("rgba(245, 232, 200, 0.2)")
-                        .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
-                }
-                letterBox.x = letterStartX + i * (letterWidth + letterGap);
-                letterBox.y = letterY;
-                stage.addChild(letterBox);
-                targetBoxRefs.push(letterBox);
-
-                const textRef = addOutlinedText(
-                    text,
-                    "bold 50px Arial",
-                    letterBox.x + letterWidth / 2,
-                    letterBox.y + letterHeight / 2
-                );
-                targetTextRefs.push(textRef);
-            });
-        }
-        renderTargetLetters();
-
-        function updateProcessingPositionGlow() {
-            createjs.Tween.removeTweens(processingPositionGlow);
-            processingPositionGlow.visible = false;
-            const step = currentWord && currentWord.targetSlots[stepIndex];
-            const position = Number(step && step.processingPosition);
-            if (!Number.isInteger(position) || position < 1 || position > targetBoxRefs.length) return;
-            if (currentWord.initial[position - 1] !== "_") return;
-
-            const box = targetBoxRefs[position - 1];
-            processingPositionGlow.x = box.x;
-            processingPositionGlow.y = box.y;
-            processingPositionGlow.alpha = 0.25;
-            processingPositionGlow.visible = true;
-            createjs.Tween.get(processingPositionGlow, {loop: true})
-                .to({alpha: 1}, 500)
-                .to({alpha: 0.25}, 500)
-                .on("change", () => stage.update());
-        }
-        updateProcessingPositionGlow();
+        const targetArea = SanskritSmith.createTargetArea({
+            stage,
+            createjs,
+            layout,
+            addOutlinedText
+        });
+        const targetTextRefs = targetArea.targetTextRefs;
+        const targetBoxRefs = targetArea.targetBoxRefs;
+        const {letterWidth, letterHeight, letterGap} = targetArea;
+        targetAnimator = SanskritSmith.createConjunctAnimator({
+            stage,
+            createjs,
+            targetArea,
+            targetBarX,
+            targetBarWidth,
+            addOutlinedText
+        });
+        targetArea.render(currentWord);
+        targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
 
         const targetBarInteraction = new createjs.Shape();
         targetBarInteraction.graphics
@@ -375,8 +377,8 @@ frame.on("ready", () => {
             });
             if (!step) return;
             const isCompleteStep = SanskritSmith.isCompleteTargetStep(step);
-            if (isCompleteStep) animateCompleteConjunct(step);
-            else animateTargetPositionsToConjunct(step);
+            if (isCompleteStep) targetAnimator.animateCompleteConjunct(step);
+            else targetAnimator.animateTargetPositionsToConjunct(step);
         });
         stage.addChild(targetBarInteraction);
 
@@ -390,520 +392,64 @@ frame.on("ready", () => {
             letterParts.setText(text);
         }
 
-        function animateTargetPositionsToConjunct(step, onComplete) {
-            animateConjunctPositions(step, onComplete, false);
-        }
-
-        function animateCompleteConjunct(step, onComplete) {
-            window.setTimeout(() => {
-                animateConjunctPositions(step, onComplete, true);
-            }, 500);
-        }
-
-        function animateConjunctPositions(step, onComplete, completeMode) {
-            console.log("[targetConjunct] animation started", {
-                targetPositions: step && step.targetPositions,
-                targetConjunct: step && step.targetConjunct
-            });
-            if (targetConjunctAnimationRunning) return;
-            targetConjunctAnimationRunning = true;
-            createjs.Tween.removeTweens(processingPositionGlow);
-            processingPositionGlow.visible = false;
-
-            const processingPositionIsEmpty = step.processingPosition === ""
-                || step.processingPosition == null;
-            const toolIsEmpty = step.tool === "" || step.tool == null;
-            const isFinalStep = completeMode || (processingPositionIsEmpty && toolIsEmpty);
-
-            const positions = SanskritSmith.getTargetPositions(step, targetBoxRefs.length);
-            if (!positions.length) {
-                targetConjunctAnimationRunning = false;
-                if (onComplete) onComplete();
-                return;
+        const toolArea = SanskritSmith.createToolArea({
+            stage,
+            createjs,
+            layout,
+            toolFrameImage,
+            toolData,
+            levels,
+            getLevel: () => level,
+            getCurrentWord: () => currentWord,
+            getCurrentStep: () => currentWord.targetSlots[stepIndex],
+            getProcessingLetterBox: () => processingLetterBoxRef,
+            getProcessingLetterSize: () => processingLetterSizeRef,
+            addOutlinedText,
+            onCorrectTool: toolName => {
+                if (triggerToolAnimation) triggerToolAnimation(toolName);
+            },
+            onIncorrectTool: () => {
+                if (shakeProcessingLetter) shakeProcessingLetter();
+                if (attemptsRemaining <= 0) return;
+                attemptsRemaining -= 1;
+                attemptsUsedThisWord += 1;
+                gameUI.updateAttemptsLabel();
             }
+        });
+        toolArea.updateForLevel();
 
-            const firstPosition = positions[0];
-            const lastPosition = positions[positions.length - 1];
-            const left = letterStartX + (firstPosition - 1) * (letterWidth + letterGap);
-            const right = letterStartX + (lastPosition - 1) * (letterWidth + letterGap) + letterWidth;
-            const processingPosition = Number(step.processingPosition);
-            const hasProcessingPosition = Number.isInteger(processingPosition)
-                && processingPosition > 0
-                && processingPosition <= targetBoxRefs.length;
-            const centerX = completeMode
-                ? targetBarX + targetBarWidth / 2
-                : isFinalStep
-                    ? SanskritSmith.getTargetSlotCenterX(firstPosition, letterStartX, letterWidth, letterGap)
-                : hasProcessingPosition
-                    ? SanskritSmith.getTargetSlotCenterX(processingPosition, letterStartX, letterWidth, letterGap)
-                    : (left + right) / 2;
-            const centerY = letterY + letterHeight / 2;
-            const collapseTargets = [];
-
-            positions.forEach(position => {
-                const slotX = letterStartX + (position - 1) * (letterWidth + letterGap);
-                const textRef = targetTextRefs[position - 1];
-                const box = targetBoxRefs[position - 1];
-                if (textRef) {
-                    [textRef.textOutline, textRef.textFill].forEach(text => {
-                        createjs.Tween.removeTweens(text);
-                        text.x = slotX + letterWidth / 2;
-                        text.y = centerY;
-                        text.scaleX = 1;
-                        text.scaleY = 1;
-                        text.alpha = 1;
-                        text.visible = true;
-                        collapseTargets.push(text);
-                    });
+        const gameUI = SanskritSmith.createGameUI({
+            stage,
+            frame,
+            createjs,
+            layout,
+            levels,
+            campaign,
+            getCampaignState: () => ({
+                level,
+                words,
+                wordIndex,
+                levelIndex: campaign.levelIndex,
+                hintedWordIndices
+            }),
+            getMaxUnlockedLevel: () => maxUnlockedLevel,
+            getHintCount: () => hintCount,
+            getAttemptsRemaining: () => attemptsRemaining,
+            onHint: () => {
+                if (!currentWord) return null;
+                const alreadyHinted = hintedWordIndices.has(wordIndex);
+                if (!alreadyHinted) {
+                    if (hintCount >= 2) return null;
+                    hintedWordIndices.add(wordIndex);
+                    hintCount += 1;
                 }
-                if (box) {
-                    createjs.Tween.removeTweens(box);
-                    box.regX = letterWidth / 2;
-                    box.regY = letterHeight / 2;
-                    box.x = slotX + letterWidth / 2;
-                    box.y = centerY;
-                    box.scaleX = 1;
-                    box.scaleY = 1;
-                    box.visible = true;
-                    collapseTargets.push(box);
-                }
-            });
-
-            let remaining = collapseTargets.length;
-            let finished = false;
-            const finishCollapse = () => {
-                if (finished) return;
-                finished = true;
-                console.log("[targetConjunct] all collapse tweens finished", {
-                    targetConjunct: step.targetConjunct,
-                    replacementPosition: firstPosition
-                });
-                collapseTargets.forEach(target => {
-                    createjs.Tween.removeTweens(target);
-                    target.visible = false;
-                    stage.removeChild(target);
-                });
-                // Clear every collapsed slot's text ref so a later step cannot
-                // make stale letters visible again when it resets tween state.
-                positions.forEach(position => {
-                    targetTextRefs[position - 1] = null;
-                });
-
-                const replacementX = isFinalStep
-                    ? targetBarX + targetBarWidth / 2
-                    : SanskritSmith.getTargetSlotCenterX(firstPosition, letterStartX, letterWidth, letterGap);
-                const replacementText = addOutlinedText(
-                    step.targetConjunct || "",
-                    "bold 50px Arial",
-                    replacementX,
-                    centerY
-                );
-                targetTextRefs[firstPosition - 1] = replacementText;
-                if (isFinalStep) {
-                    let displayFinished = false;
-                    const finishDisplay = () => {
-                        if (displayFinished) return;
-                        displayFinished = true;
-                        targetConjunctAnimationRunning = false;
-                        stage.update();
-                        if (onComplete) onComplete();
-                    };
-                    [replacementText.textOutline, replacementText.textFill].forEach(text => {
-                        text.alpha = 0;
-                    });
-                    createjs.Tween.get(replacementText.textOutline)
-                        .to({alpha: 1}, 350)
-                        .on("change", () => stage.update());
-                    const fillTween = createjs.Tween.get(replacementText.textFill)
-                        .to({alpha: 1}, 350)
-                        .on("change", () => stage.update());
-                    fillTween.call(finishDisplay);
-                    window.setTimeout(finishDisplay, 400);
-                    stage.update();
-                    return;
-                }
-                console.log("[targetConjunct] replacement created", {
-                    text: replacementText.textFill.text,
-                    x: replacementText.textFill.x,
-                    y: replacementText.textFill.y,
-                    visible: replacementText.textFill.visible,
-                    stageChildCount: stage.numChildren
-                });
-                stage.update();
-                targetConjunctAnimationRunning = false;
-                if (onComplete) onComplete();
-            };
-
-            if (!remaining) {
-                finishCollapse();
-                return;
-            }
-
-            collapseTargets.forEach(target => {
-                createjs.Tween.get(target)
-                    .to({x: centerX, y: centerY, scaleX: 0, scaleY: 0, alpha: 0}, 400)
-                    .on("change", () => stage.update())
-                    .call(() => {
-                        remaining -= 1;
-                        console.log("[targetConjunct] collapse tween completed", {
-                            remaining,
-                            total: collapseTargets.length
-                        });
-                        if (remaining === 0) finishCollapse();
-                    });
-            });
-
-            // Keep the replacement from depending exclusively on CreateJS
-            // completion callbacks: the collapse visuals can finish even when a
-            // callback is missed (for example, after another tween was removed).
-            window.setTimeout(() => {
-                if (!finished) {
-                    console.warn("[targetConjunct] using timed completion fallback", {
-                        remaining,
-                        targetConjunct: step.targetConjunct
-                    });
-                    finishCollapse();
-                }
-            }, 450);
-        }
-
-        // ==========================================
-        // 2. Bottom Tools Area
-        // ==========================================
-        // Create one visual for every campaign tool, then reveal only this level's options.
-        const toolNamesForCampaign = [...new Set(levelData.levels.flatMap(levelConfig =>
-            levelConfig.toolsOptions || []
-        ))];
-        const availableTools = toolNamesForCampaign
-            .map(name => toolData.find(toolInfo => toolInfo.toolName.toLowerCase() === name.toLowerCase()))
-            .filter(Boolean);
-
-        function updateToolsForLevel() {
-            const allowedToolNames = level.toolsOptions || currentWord.toolsOptions || [];
-            const allowedTools = new Set(allowedToolNames.map(name => name.toLowerCase()));
-            const visibleGroups = toolDisplayGroups.filter(group =>
-                allowedTools.has(group.toolName.toLowerCase())
-            );
-            const visibleWidth = visibleGroups.reduce((total, group) => total + group.width, 0)
-                + toolGap * Math.max(0, visibleGroups.length - 1);
-            let nextX = toolsAreaX + (toolsAreaWidth - visibleWidth) / 2;
-
-            toolDisplayGroups.forEach(group => {
-                const visible = allowedTools.has(group.toolName.toLowerCase());
-                group.displays.forEach(display => { display.visible = visible; });
-                if (!visible) return;
-                group.moveTo(nextX);
-                nextX += group.width + toolGap;
-            });
-        }
-        const toolCount = availableTools.length;
-        const toolGap = 0;
-        const toolTop = toolsAreaY + toolsAreaHeight * 0.25;
-        const toolTargetHeight = toolsAreaHeight * 0.7;
-        const toolFrameImageWidth = toolFrameImage.naturalWidth || toolFrameImage.width;
-        const toolFrameImageHeight = toolFrameImage.naturalHeight || toolFrameImage.height;
-        const baseToolScale = Math.min(
-            toolTargetHeight / toolFrameImageHeight,
-            toolsAreaWidth / (toolCount * toolFrameImageWidth + toolGap * (toolCount - 1))
-        );
-        const toolFrameScale = 1.2;
-        const toolScale = baseToolScale * toolFrameScale;
-        const toolWidth = toolFrameImageWidth * toolScale;
-        const actualToolHeight = toolFrameImageHeight * toolScale;
-        const toolGroupWidth = toolWidth * toolCount + toolGap * (toolCount - 1);
-        const toolStartX = toolsAreaX + (toolsAreaWidth - toolGroupWidth) / 2;
-        // Tool order: axe, scissors, gem, hook, hammer.
-        const toolCenterY = toolTop; // Align the tool center with the top edge of its Tool frame.
-
-        for (let i = 0; i < toolCount; i++) {
-            const toolInfo = availableTools[i];
-            const toolX = toolStartX + i * (toolWidth + toolGap);
-            // Keep the Tool frame fixed; do not add drag events to it.
-            let toolBox = new createjs.Bitmap("assets/toolBackground.png");
-            toolBox.scaleX = toolWidth / toolFrameImageWidth;
-            toolBox.scaleY = actualToolHeight / toolFrameImageHeight;
-            toolBox.x = toolX;
-            toolBox.y = toolTop;
-            toolBox.image.onload = () => stage.update();
-            stage.addChild(toolBox);
-            const toolVisuals = [toolBox];
-
-            // Preserve the tool image aspect ratio and center it in its Tool frame.
-            const tool = new createjs.Bitmap("assets/" + toolInfo.asset);
-            const originalToolX = toolX + toolWidth / 2;
-            const originalToolY = toolCenterY * 1.01;
-            let interactionAttached = false;
-            let setToolHomePosition = null;
-            let toolDisplayGroup = null;
-
-            const setupTool = () => {
-                const maxToolWidth = toolWidth * 0.8;
-                const maxToolHeight = actualToolHeight * 0.8;
-                const toolScale = Math.min(
-                    maxToolWidth / tool.image.width,
-                    maxToolHeight / tool.image.height
-                );
-                tool.scaleX = toolScale * 0.95;
-                tool.scaleY = toolScale * 0.95;
-                tool.regX = tool.image.width / 2;
-                tool.regY = tool.image.height / 2;
-                tool.x = (toolDisplayGroup ? toolDisplayGroup.x : toolX) + toolWidth / 2;
-                tool.y = originalToolY;
-                if (!interactionAttached) {
-                    interactionAttached = true;
-                    const toolInteraction = SanskritSmith.attachToolInteraction({
-                        tool,
-                        stage,
-                        createjs,
-                        originalX: originalToolX,
-                        originalY: originalToolY,
-                        getCurrentStep: () => currentWord.targetSlots[stepIndex],
-                        processingLetterBox: () => processingLetterBoxRef,
-                        processingLetterSize: () => processingLetterSizeRef,
-                        isCorrectTool: step => step.tool
-                            && toolInfo.toolName.toLowerCase() === step.tool.toLowerCase(),
-                        onCorrectDrop: () => {
-                            if (triggerToolAnimation) triggerToolAnimation(toolInfo.toolName);
-                        }
-                    });
-                    setToolHomePosition = toolInteraction.setHomePosition;
-                }
-                if (setToolHomePosition) setToolHomePosition(tool.x, tool.y);
-                stage.update();
-            };
-
-            tool.image.onload = setupTool;
-            if (tool.image.complete) setupTool();
-            stage.addChild(tool);
-            toolVisuals.push(tool);
-            toolDisplayRefs.push(tool);
-
-            // Center the tool name and effect text in the lower text area.
-            const toolTextCenterX = toolBox.x + toolWidth / 2 ;
-            const toolTextAreaTop = toolTop + actualToolHeight * 0.55;
-            const toolTextAreaBottom = toolTop + actualToolHeight - 8;
-            const toolTextCenterY = (toolTextAreaTop + toolTextAreaBottom) / 2;
-
-            const toolNameText = addOutlinedText(
-                toolInfo.label || toolInfo.toolName,
-                "bold 21px Arial",
-                toolTextCenterX,
-                toolTextCenterY - 20
-            );
-            const toolEffectText = addOutlinedText(
-                toolInfo.toolEffect || "tool effect",
-                "16px Arial",
-                toolTextCenterX,
-                toolTextCenterY + 5
-            );
-            toolVisuals.push(
-                toolNameText.textOutline,
-                toolNameText.textFill,
-                toolEffectText.textOutline,
-                toolEffectText.textFill
-            );
-            toolDisplayGroup = {
-                toolName: toolInfo.toolName,
-                displays: toolVisuals,
-                width: toolWidth,
-                x: toolX,
-                moveTo(nextX) {
-                    const offsetX = nextX - this.x;
-                    this.displays.forEach(display => { display.x += offsetX; });
-                    this.x = nextX;
-                    if (setToolHomePosition) setToolHomePosition(tool.x, tool.y);
-                }
-            };
-            toolDisplayGroups.push(toolDisplayGroup);
-
-        }
-        updateToolsForLevel();
-
-        // ==========================================
-        // 3. Right Info Area
-        // ==========================================
-        const infoAreaWidth = rightAreaWidth * 0.85;
-        const infoAreaX = rightAreaX + (rightAreaWidth - infoAreaWidth) / 2;
-        const infoAreaHeight = 620;
-        const infoSectionWidth = infoAreaWidth * 0.9;
-        const infoSectionX = infoAreaX + (infoAreaWidth - infoSectionWidth) / 2;
-        const infoArea = new createjs.Shape();
-        infoArea.graphics
-            .beginFill("rgba(204, 204, 204, 0.3)")
-            // .setStrokeStyle(6)
-            // .beginStroke("#000000")
-            // .drawRoundRect(0, 0, 330, 620, 16)
-            // .setStrokeStyle(4)
-            // .beginStroke("#FFF2A8")
-            .drawRoundRect(0, 0, infoAreaWidth, infoAreaHeight, 16);
-        infoArea.x = infoAreaX;
-        infoArea.y = 40;
-        stage.addChild(infoArea);
-
-        const infoTitle = new createjs.Text("Sanskrit Smith", "bold 40px Arial", "#FFFFFF");
-        infoTitle.textAlign = "left";
-        infoTitle.textBaseline = "middle";
-        infoTitle.x = 840;
-        infoTitle.y = 68;
-        stage.addChild(infoTitle);
-
-        // Control buttons above General Status.
-        const controlButtonWidth = 90;
-        const controlButtonHeight = 24;
-        const controlButtonGap = 10;
-        const controlButtonRowWidth = controlButtonWidth * 3 + controlButtonGap * 2;
-        const controlButtonY = 150 - controlButtonHeight * 1.5;
-        const controlButtonLabels = ["How to Play", "Music", "SFX"];
-
-        controlButtonLabels.forEach((label, i) => {
-            const button = new createjs.Shape();
-            button.graphics
-                .beginFill("#FFF2A8")
-                .setStrokeStyle(2)
-                .beginStroke("#000000")
-                .drawRoundRect(0, 0, controlButtonWidth, controlButtonHeight, 6);
-            button.x = infoAreaX + (infoAreaWidth - controlButtonRowWidth) / 2
-                + i * (controlButtonWidth + controlButtonGap);
-            button.y = controlButtonY;
-            button.cursor = "pointer";
-            stage.addChild(button);
-
-            const buttonText = new createjs.Text(label, "bold 12px Arial", "#000000");
-            buttonText.textAlign = "center";
-            buttonText.textBaseline = "middle";
-            buttonText.x = button.x + controlButtonWidth / 2;
-            buttonText.y = button.y + controlButtonHeight / 2;
-            stage.addChild(buttonText);
+                return {wordIndex, newHint: !alreadyHinted};
+            },
+            onLevelSelect: index => jumpToLevel(index)
         });
 
-        // 3.1 Blue General Status
-        new Rectangle(infoSectionWidth, 130, null, "#FFFFFF", 2)
-            .loc(infoSectionX, 150);
-
-        // Right-align all status text in two columns.
-        const generalStatusOffsetX = 15;
-        const statusLabelX = 1005 + generalStatusOffsetX;
-        const statusValueX = 1115 + generalStatusOffsetX;
-        const addStatusText = (text, font, x, y) => {
-            const statusText = new createjs.Text(text, font, "#FFFFFF");
-            statusText.textAlign = "right";
-            statusText.textBaseline = "middle";
-            statusText.x = x;
-            statusText.y = y;
-            stage.addChild(statusText);
-        };
-
-        addStatusText("Today's Income", "bold 22px Arial", statusLabelX, 180);
-        addStatusText("$0", "bold 22px Arial", statusValueX, 180);
-        addStatusText("Today's Completed", "15px Arial", statusLabelX, 215);
-        addStatusText("0", "bold 18px Arial", statusValueX, 215);
-
-        // Hint button and Attempts counter share one row.
-        const hintButton = new createjs.Shape();
-        hintButton.graphics
-            .beginFill("#FFF2A8")
-            .setStrokeStyle(2)
-            .beginStroke("#000000")
-            .drawRoundRect(0, 0, 80, 32, 8);
-        hintButton.x = 855 + generalStatusOffsetX;
-        hintButton.y = 237;
-        hintButton.cursor = "pointer";
-        stage.addChild(hintButton);
-
-        const hintButtonLabel = new createjs.Text("Hint", "bold 15px Arial", "#000000");
-        hintButtonLabel.textAlign = "center";
-        hintButtonLabel.textBaseline = "middle";
-        hintButtonLabel.x = hintButton.x + 40;
-        hintButtonLabel.y = hintButton.y + 16;
-        stage.addChild(hintButtonLabel);
-
-        addStatusText("Attempts: 0", "bold 17px Arial", statusValueX, 253);
-
-        // 3.2 Black Level Dropdown placeholder
-        new Rectangle(infoSectionWidth, 45, null, "#FFFFFF", 2)
-            .loc(infoSectionX, 295);
-        new Label({text: "Level Dropdown", size: 16, color: "#FFFFFF"})
-            .loc(855, 308);
-
-        // 3.3 Green Level Status
-        new Rectangle(infoSectionWidth, 265, null, "#FFFFFF", 2)
-            .loc(infoSectionX, 355);
-
-        const levelLeftX = 855;
-        levelTitle = new createjs.Text("Level 1", "bold 26px Arial", "#FFFFFF");
-        levelTitle.textAlign = "left";
-        levelTitle.textBaseline = "middle";
-        levelTitle.x = levelLeftX;
-        levelTitle.y = 380;
-        stage.addChild(levelTitle);
-
-        levelRequirement = new createjs.Text(
-            "Need 5 pieces to complete the level",
-            "14px Arial",
-            "#FFFFFF"
-        );
-        levelRequirement.textAlign = "left";
-        levelRequirement.textBaseline = "middle";
-        levelRequirement.x = levelLeftX;
-        levelRequirement.y = 446;
-        stage.addChild(levelRequirement);
-
-        const progressLabel = new createjs.Text("Level Progress", "bold 13px Arial", "#FFFFFF");
-        progressLabel.textAlign = "left";
-        progressLabel.textBaseline = "middle";
-        progressLabel.x = 855;
-        progressLabel.y = 408;
-        stage.addChild(progressLabel);
-
-        const progressBar = new createjs.Shape();
-        const progressBarWidth = 260;
-        progressBar.graphics
-            .beginFill("#174D17")
-            .drawRoundRect(0, 0, progressBarWidth, 16, 8);
-        progressBar.x = 855;
-        progressBar.y = 418;
-        stage.addChild(progressBar);
-
-        progressFill = new createjs.Shape();
-        progressFill.graphics
-            .beginFill("#FFF2A8")
-            .drawRoundRect(0, 0, 0, 16, 8);
-        progressFill.x = progressBar.x;
-        progressFill.y = progressBar.y;
-        stage.addChild(progressFill);
-
-        function updateCampaignStatus(completedCount = wordIndex) {
-            if (!level) return;
-            const levelNumber = String(level.id || "").match(/\d+/)?.[0] || campaign.levelIndex + 1;
-            levelTitle.text = level.name || `Level ${levelNumber}`;
-            levelRequirement.text = `Complete ${words.length} words to clear this level`;
-
-            selectedWordLabels.forEach(label => stage.removeChild(label));
-            selectedWordLabels.length = 0;
-            words.forEach((word, index) => {
-                const wordLabel = index < completedCount ? ` ${word.word}` : "";
-                const label = new createjs.Text(`${index + 1}.${wordLabel}`, "13px Arial", "#FFFFFF");
-                label.textAlign = "left";
-                label.textBaseline = "middle";
-                label.x = 855;
-                label.y = 475 + index * 25;
-                stage.addChild(label);
-                selectedWordLabels.push(label);
-            });
-
-            const totalWords = words.length;
-            const completedWords = Math.min(totalWords, Math.max(0, Number(completedCount) || 0));
-            const completionRatio = totalWords ? completedWords / totalWords : 0;
-            progressLabel.text = `Level Progress: ${Math.round(completionRatio * 100)}%`;
-            progressFill.graphics.clear()
-                .beginFill("#FFF2A8")
-                .drawRoundRect(0, 0, progressBarWidth * completionRatio, 16, 8);
-            stage.update();
-        }
-        updateCampaignStatus();
-
         // Keep tool artwork above the rest of the scene, including the info panel.
-        toolDisplayRefs.forEach(tool => stage.addChild(tool));
+        toolArea.displayRefs.forEach(tool => stage.addChild(tool));
         stage.update(); // Refresh the stage.
     }).catch(error => {
         console.error("[startup] Game initialization failed:", error);

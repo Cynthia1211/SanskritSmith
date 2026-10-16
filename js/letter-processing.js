@@ -85,6 +85,191 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
     };
 };
 
+SanskritSmith.createConjunctAnimator = ({stage, createjs, targetArea, targetBarX, targetBarWidth, addOutlinedText}) => {
+    let isAnimating = false;
+const animateConjunctPositions = (step, onComplete, completeMode = false) => {
+    console.log("[targetConjunct] animation started", {
+        targetPositions: step && step.targetPositions,
+        targetConjunct: step && step.targetConjunct
+    });
+    if (isAnimating) return;
+    isAnimating = true;
+    createjs.Tween.removeTweens(targetArea.processingPositionGlow);
+    targetArea.processingPositionGlow.visible = false;
+
+    const processingPositionIsEmpty = step.processingPosition === ""
+        || step.processingPosition == null;
+    const toolIsEmpty = step.tool === "" || step.tool == null;
+    const isFinalStep = completeMode || (processingPositionIsEmpty && toolIsEmpty);
+
+    const positions = SanskritSmith.getTargetPositions(step, targetArea.targetBoxRefs.length);
+    if (!positions.length) {
+        isAnimating = false;
+        if (onComplete) onComplete();
+        return;
+    }
+
+    const firstPosition = positions[0];
+    const lastPosition = positions[positions.length - 1];
+    const left = targetArea.letterStartX + (firstPosition - 1) * (targetArea.letterWidth + targetArea.letterGap);
+    const right = targetArea.letterStartX + (lastPosition - 1) * (targetArea.letterWidth + targetArea.letterGap) + targetArea.letterWidth;
+    const processingPosition = Number(step.processingPosition);
+    const hasProcessingPosition = Number.isInteger(processingPosition)
+        && processingPosition > 0
+        && processingPosition <= targetArea.targetBoxRefs.length;
+    const centerX = completeMode
+        ? targetBarX + targetBarWidth / 2
+        : isFinalStep
+            ? SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap)
+        : hasProcessingPosition
+            ? SanskritSmith.getTargetSlotCenterX(processingPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap)
+            : (left + right) / 2;
+    const centerY = targetArea.letterY + targetArea.letterHeight / 2;
+    const collapseTargets = [];
+
+    positions.forEach(position => {
+        const slotX = targetArea.letterStartX + (position - 1) * (targetArea.letterWidth + targetArea.letterGap);
+        const textRef = targetArea.targetTextRefs[position - 1];
+        const box = targetArea.targetBoxRefs[position - 1];
+        if (textRef) {
+            [textRef.textOutline, textRef.textFill].forEach(text => {
+                createjs.Tween.removeTweens(text);
+                text.x = slotX + targetArea.letterWidth / 2;
+                text.y = centerY;
+                text.scaleX = 1;
+                text.scaleY = 1;
+                text.alpha = 1;
+                text.visible = true;
+                collapseTargets.push(text);
+            });
+        }
+        if (box) {
+            createjs.Tween.removeTweens(box);
+            box.regX = targetArea.letterWidth / 2;
+            box.regY = targetArea.letterHeight / 2;
+            box.x = slotX + targetArea.letterWidth / 2;
+            box.y = centerY;
+            box.scaleX = 1;
+            box.scaleY = 1;
+            box.visible = true;
+            collapseTargets.push(box);
+        }
+    });
+
+    let remaining = collapseTargets.length;
+    let finished = false;
+    const finishCollapse = () => {
+        if (finished) return;
+        finished = true;
+        console.log("[targetConjunct] all collapse tweens finished", {
+            targetConjunct: step.targetConjunct,
+            replacementPosition: firstPosition
+        });
+        collapseTargets.forEach(target => {
+            createjs.Tween.removeTweens(target);
+            target.visible = false;
+            stage.removeChild(target);
+        });
+        // Clear every collapsed slot's text ref so a later step cannot
+        // make stale letters visible again when it resets tween state.
+        positions.forEach(position => {
+            targetArea.targetTextRefs[position - 1] = null;
+        });
+
+        const replacementX = isFinalStep
+            ? targetBarX + targetBarWidth / 2
+            : SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap);
+        const replacementFontSize = isFinalStep ? 60 : 50;
+        const replacementText = addOutlinedText(
+            step.targetConjunct || "",
+            `bold ${replacementFontSize}px Arial`,
+            replacementX,
+            centerY
+        );
+        targetArea.targetTextRefs[firstPosition - 1] = replacementText;
+        if (isFinalStep) {
+            let displayFinished = false;
+            const finishDisplay = () => {
+                if (displayFinished) return;
+                displayFinished = true;
+                window.setTimeout(() => {
+                    isAnimating = false;
+                    stage.update();
+                    if (onComplete) onComplete();
+                }, 1000);
+            };
+            [replacementText.textOutline, replacementText.textFill].forEach(text => {
+                text.alpha = 0;
+                text.scaleX = 0.75;
+                text.scaleY = 0.75;
+                createjs.Tween.get(text)
+                    .to({alpha: 1, scaleX: 1.3, scaleY: 1.3}, 525)
+                    .on("change", () => stage.update());
+            });
+            window.setTimeout(finishDisplay, 575);
+            stage.update();
+            return;
+        }
+        console.log("[targetConjunct] replacement created", {
+            text: replacementText.textFill.text,
+            x: replacementText.textFill.x,
+            y: replacementText.textFill.y,
+            visible: replacementText.textFill.visible,
+            stageChildCount: stage.numChildren
+        });
+        stage.update();
+        isAnimating = false;
+        if (onComplete) onComplete();
+    };
+
+    if (!remaining) {
+        finishCollapse();
+        return;
+    }
+
+    collapseTargets.forEach(target => {
+        createjs.Tween.get(target)
+            .to({x: centerX, y: centerY, scaleX: 0, scaleY: 0, alpha: 0}, 400)
+            .on("change", () => stage.update())
+            .call(() => {
+                remaining -= 1;
+                console.log("[targetConjunct] collapse tween completed", {
+                    remaining,
+                    total: collapseTargets.length
+                });
+                if (remaining === 0) finishCollapse();
+            });
+    });
+
+    // Keep the replacement from depending exclusively on CreateJS
+    // completion callbacks: the collapse visuals can finish even when a
+    // callback is missed (for example, after another tween was removed).
+    window.setTimeout(() => {
+        if (!finished) {
+            console.warn("[targetConjunct] using timed completion fallback", {
+                remaining,
+                targetConjunct: step.targetConjunct
+            });
+            finishCollapse();
+        }
+    }, 450);
+}
+
+    return {
+        animateTargetPositionsToConjunct(step, onComplete) {
+            animateConjunctPositions(step, onComplete, false);
+        },
+        animateCompleteConjunct(step, onComplete) {
+            window.setTimeout(() => {
+                animateConjunctPositions(step, onComplete, true);
+            }, 500);
+        },
+        reset() {
+            isAnimating = false;
+        }
+    };
+};
+
 SanskritSmith.createLetterProcessor = ({
     stage,
     createjs,

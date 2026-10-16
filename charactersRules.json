@@ -1,11 +1,24 @@
 {
-    "ख": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.45 } } ],
-    "ग": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.45 } } ],
-    "घ": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.5 } } ],
-    "च": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.4 } } ],
-    "ज": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.45 } } ],
-    "झ": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.48 } } ],
-    "ण": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.42 } } ],
+    "ख": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.45}} ] },
+    "ग": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.45}} ] },
+    "घ": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.5}} ] },
+    "च": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.4}} ] },
+    "ज": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.45}} ] },
+    "झ": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.48}} ] },
+    "ण": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.42}} ] },
+    "स": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.35}} ] },
+    "त": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.42}} ] },
+    "म": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.45}} ] },
 
     "स": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.34 } } ],
     
@@ -15,16 +28,32 @@
     "क": [ { "audio": "", "tool": "scissors", "toolAnimation": "scissorsTrim", "toolParams": { "hiddenRightRatio": 0.45, "hiddenBottomRatio": 0.45 } } ],
     "फ": [ { "audio": "", "tool": "scissors", "toolAnimation": "scissorsTrim", "toolParams": { "hiddenRightRatio": 0.45, "hiddenBottomRatio": 0.45 } } ],
 
-    "ङ": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ङ्" } } ],
-    "छ": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "छ्" } } ],
-    "ञ": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ञ्" } } ],
-    "ट": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ट्" } } ],
-    "ठ": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ठ्" } } ],
-    "ड": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ड्" } } ],
-    "ढ": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ढ्" } } ],
+    "क": { "audio": "",
+        "tools": [ {"tool": "scissors", "toolAnimation": "scissorsTrim", "toolParams": {"hiddenRightRatio": 0.45, "hiddenBottomRatio": 0.45}} ] },
+    "फ": { "audio": "",
+        "tools": [ {"tool": "scissors", "toolAnimation": "scissorsTrim", "toolParams": {"hiddenRightRatio": 0.45, "hiddenBottomRatio": 0.45}} ] },
     
-    "ह": [ { "audio": "", "tool": "gem", "toolAnimation": "gemHalant", "toolParams": { "withHalant": "ह्" } } ],
-
-    "र": [ { "audio": "", "tool": "tool1", "toolAnimation": "tool1Animation", "toolParams": { "parm1": "र्म" } },
-           { "audio": "", "tool": "tool2", "toolAnimation": "tool2Animation", "toolParams": { "parm2": "प्र" } } ]
+    
+        "ङ": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ङ्"}} ] },
+    "छ": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "छ्"}} ] },
+    "ञ": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ञ्"}} ] },
+    "ट": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ट्"}} ] },
+    "ठ": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ठ्"}} ] },
+    "ड": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ड्"}} ] },
+    "ढ": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ढ्"}} ] },
+    "ह": { "audio": "",
+        "tools": [ {"tool": "gem", "toolAnimation": "gemHalant", "toolParams": {"withHalant": "ह्"}} ] },
+    
+    
+    "र": { "audio": "",
+        "tools": [ {"tool": "tool1", "toolAnimation": "tool1Animation", "toolParams": {"parm1": "र्म"}},
+                   {"tool": "tool2", "toolAnimation": "tool2Animation", "toolParams": {"parm2": "प्र"}} ] }
+                   
 }
