@@ -312,7 +312,7 @@ frame.on("ready", () => {
 
             triggerToolAnimation = toolName => {
                 const step = currentWord.targetSlots[stepIndex];
-                const rulesForLetter = characterRules[processingLetter.text] || [];
+                const rulesForLetter = characterRules[processingLetter.text]?.tools || [];
                 const rule = rulesForLetter.find(candidate =>
                     candidate.tool
                     && step?.tool
