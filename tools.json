@@ -1,0 +1,32 @@
+[
+    {
+        "toolName": "axe",
+        "toolEffect": "Split the letter",
+        "asset": "axe.png",
+        "label": "Axe"
+    },
+    {
+        "toolName": "scissors",
+        "toolEffect": "Trim the letter",
+        "asset": "scissors.png",
+        "label": "Scissors"
+    },
+    {
+        "toolName": "gem",
+        "toolEffect": "Add halant",
+        "asset": "gem.png",
+        "label": "Gem"
+    },
+    {
+        "toolName": "hook",
+        "toolEffect": "Stack letters",
+        "asset": "hook.png",
+        "label": "Hook"
+    },
+    {
+        "toolName": "hammer",
+        "toolEffect": "Forge the word",
+        "asset": "hammer.png",
+        "label": "Hammer"
+    }
+]
