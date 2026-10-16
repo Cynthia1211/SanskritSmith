@@ -8,7 +8,6 @@
 <!-- Standard ZIM 016 setup: ZIM depends on CreateJS -->
 <script src="https://zimjs.org/cdn/1.5/createjs.js"></script>
 <script src="https://zimjs.org/cdn/016/zim_min.js"></script>
-<script src="js/game-data.js"></script>
 <script src="js/game-flow.js"></script>
 <script src="js/helpers.js"></script>
 <script src="js/letter-processing.js"></script>
@@ -53,9 +52,9 @@ frame.on("ready", () => {
         })
     ]).then(async ([targetBarImage, toolFrameImage]) => {
         const [levelData, toolData, characterRules] = await Promise.all([
-            SanskritSmith.loadJson("levels.json", SanskritSmith.fallbackLevels),
-            SanskritSmith.loadJson("tools.json", SanskritSmith.fallbackTools),
-            SanskritSmith.loadJson("charactersRules.json", SanskritSmith.fallbackCharacters)
+            SanskritSmith.loadJson("levels.json"),
+            SanskritSmith.loadJson("tools.json"),
+            SanskritSmith.loadJson("charactersRules.json")
         ]);
         const campaign = SanskritSmith.createCampaign(levelData.levels);
         let level = campaign.level;
@@ -122,20 +121,15 @@ frame.on("ready", () => {
             forgingStation.x = toolsAreaX + toolsAreaWidth / 2 - forgingStationDisplayWidth / 2;
             forgingStation.y = frame.height - forgingStation.image.height * 0.45;
 
-            // Add a temporary processing letter frame above the forging station.
+            // Position the processing letter above the forging station.
             const processingLetterSize = forgingStationDisplayWidth * 0.8;
             processingLetterSizeRef = processingLetterSize;
-            const processingLetterBox = new createjs.Shape();
-            processingLetterBox.graphics
-                .setStrokeStyle(4)
-                .beginStroke("#FFFFFF")
-                .drawRect(0, 0, processingLetterSize, processingLetterSize);
-            processingLetterBox.x = forgingStation.x
-                + forgingStationDisplayWidth / 2
-                - processingLetterSize / 2;
+            const processingLetterBox = {
+                x: forgingStation.x + forgingStationDisplayWidth / 2 - processingLetterSize / 2,
+                y: 0
+            };
             // Overlap the forging station by 25% of the square's height.
             processingLetterBox.y = forgingStation.y - processingLetterSize * 0.7;
-            stage.addChild(processingLetterBox);
 
             // Keep the character still and hide a configurable part on the right.
             const letterFont = "bold 400px 'Noto Sans Devanagari', 'Nirmala UI', Arial";
@@ -190,13 +184,9 @@ frame.on("ready", () => {
                 const transition = campaign.completeWord();
                 if (transition === "complete") {
                     processingParts.hide();
+                    updateCampaignStatus(words.length);
                     if (levelTitle) levelTitle.text = "All levels complete!";
                     if (levelRequirement) levelRequirement.text = "You completed every selected word.";
-                    if (progressFill) {
-                        progressFill.graphics.clear()
-                            .beginFill("#FFF2A8")
-                            .drawRoundRect(0, 0, 260, 16, 8);
-                    }
                     stage.update();
                     console.info("[campaign] all levels completed");
                     return;
@@ -288,13 +278,18 @@ frame.on("ready", () => {
         targetBar.image.onload = () => stage.update();
         stage.addChild(targetBar);
         
-        new Label({text: "Target Bar", size: 24, color: "#FFFFFF"})
-            .loc(70, targetBarY + 15);
-
         let letterData = currentWord.initial.map(value => value === "_" ? "?" : value);
         const letterWidth = 85;
         const letterHeight = 85;
         const letterGap = 30; // Keep the current spacing between boxes.
+        const processingPositionGlow = new createjs.Shape();
+        processingPositionGlow.graphics
+            .setStrokeStyle(5)
+            .beginStroke("#FFD700")
+            .drawRoundRect(-4, -4, letterWidth + 8, letterHeight + 8, 15);
+        processingPositionGlow.visible = false;
+        processingPositionGlow.mouseEnabled = false;
+        stage.addChild(processingPositionGlow);
         let letterGroupWidth = letterWidth * letterData.length + letterGap * (letterData.length - 1);
         let letterStartX = targetBarX + (targetBarWidth - letterGroupWidth) / 2;
         const letterY = targetBarY + targetBarHeight / 2 - letterHeight / 2;
@@ -327,11 +322,6 @@ frame.on("ready", () => {
                         .beginStroke("#FFFFFF")
                         .beginFill("rgba(245, 232, 200, 0.2)")
                         .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
-                } else {
-                    letterBox.graphics
-                        .setStrokeStyle(2)
-                        .beginStroke("rgba(255, 255, 255, 0.45)")
-                        .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
                 }
                 letterBox.x = letterStartX + i * (letterWidth + letterGap);
                 letterBox.y = letterY;
@@ -350,11 +340,22 @@ frame.on("ready", () => {
         renderTargetLetters();
 
         function updateProcessingPositionGlow() {
-            targetBoxRefs.forEach(box => { box.shadow = null; });
+            createjs.Tween.removeTweens(processingPositionGlow);
+            processingPositionGlow.visible = false;
             const step = currentWord && currentWord.targetSlots[stepIndex];
             const position = Number(step && step.processingPosition);
             if (!Number.isInteger(position) || position < 1 || position > targetBoxRefs.length) return;
-            targetBoxRefs[position - 1].shadow = new createjs.Shadow("#FFD700", 0, 0, 18);
+            if (currentWord.initial[position - 1] !== "_") return;
+
+            const box = targetBoxRefs[position - 1];
+            processingPositionGlow.x = box.x;
+            processingPositionGlow.y = box.y;
+            processingPositionGlow.alpha = 0.25;
+            processingPositionGlow.visible = true;
+            createjs.Tween.get(processingPositionGlow, {loop: true})
+                .to({alpha: 1}, 500)
+                .to({alpha: 0.25}, 500)
+                .on("change", () => stage.update());
         }
         updateProcessingPositionGlow();
 
@@ -406,6 +407,8 @@ frame.on("ready", () => {
             });
             if (targetConjunctAnimationRunning) return;
             targetConjunctAnimationRunning = true;
+            createjs.Tween.removeTweens(processingPositionGlow);
+            processingPositionGlow.visible = false;
 
             const processingPositionIsEmpty = step.processingPosition === ""
                 || step.processingPosition == null;
@@ -427,8 +430,10 @@ frame.on("ready", () => {
             const hasProcessingPosition = Number.isInteger(processingPosition)
                 && processingPosition > 0
                 && processingPosition <= targetBoxRefs.length;
-            const centerX = isFinalStep
-                ? SanskritSmith.getTargetSlotCenterX(firstPosition, letterStartX, letterWidth, letterGap)
+            const centerX = completeMode
+                ? targetBarX + targetBarWidth / 2
+                : isFinalStep
+                    ? SanskritSmith.getTargetSlotCenterX(firstPosition, letterStartX, letterWidth, letterGap)
                 : hasProcessingPosition
                     ? SanskritSmith.getTargetSlotCenterX(processingPosition, letterStartX, letterWidth, letterGap)
                     : (left + right) / 2;
@@ -565,13 +570,6 @@ frame.on("ready", () => {
         // ==========================================
         // 2. Bottom Tools Area
         // ==========================================
-        // Transparent tool area with a white outline marking its position.
-        new Rectangle(toolsAreaWidth, toolsAreaHeight, null, "#FFFFFF", 2)
-            .loc(toolsAreaX, toolsAreaY);
-
-        new Label({text: "Tools Area", size: 24, color: "#FFFFFF"})
-            .loc(70, toolsAreaY + 15);
-
         // Create one visual for every campaign tool, then reveal only this level's options.
         const toolNamesForCampaign = [...new Set(levelData.levels.flatMap(levelConfig =>
             levelConfig.toolsOptions || []
@@ -847,22 +845,23 @@ frame.on("ready", () => {
         levelRequirement.textAlign = "left";
         levelRequirement.textBaseline = "middle";
         levelRequirement.x = levelLeftX;
-        levelRequirement.y = 408;
+        levelRequirement.y = 446;
         stage.addChild(levelRequirement);
 
         const progressLabel = new createjs.Text("Level Progress", "bold 13px Arial", "#FFFFFF");
         progressLabel.textAlign = "left";
         progressLabel.textBaseline = "middle";
         progressLabel.x = 855;
-        progressLabel.y = 432;
+        progressLabel.y = 408;
         stage.addChild(progressLabel);
 
         const progressBar = new createjs.Shape();
+        const progressBarWidth = 260;
         progressBar.graphics
             .beginFill("#174D17")
-            .drawRoundRect(0, 0, 260, 16, 8);
+            .drawRoundRect(0, 0, progressBarWidth, 16, 8);
         progressBar.x = 855;
-        progressBar.y = 441;
+        progressBar.y = 418;
         stage.addChild(progressBar);
 
         progressFill = new createjs.Shape();
@@ -873,7 +872,7 @@ frame.on("ready", () => {
         progressFill.y = progressBar.y;
         stage.addChild(progressFill);
 
-        function updateCampaignStatus() {
+        function updateCampaignStatus(completedCount = wordIndex) {
             if (!level) return;
             const levelNumber = String(level.id || "").match(/\d+/)?.[0] || campaign.levelIndex + 1;
             levelTitle.text = level.name || `Level ${levelNumber}`;
@@ -882,7 +881,8 @@ frame.on("ready", () => {
             selectedWordLabels.forEach(label => stage.removeChild(label));
             selectedWordLabels.length = 0;
             words.forEach((word, index) => {
-                const label = new createjs.Text(`${index + 1}. ${word.word}`, "13px Arial", "#FFFFFF");
+                const wordLabel = index < completedCount ? ` ${word.word}` : "";
+                const label = new createjs.Text(`${index + 1}.${wordLabel}`, "13px Arial", "#FFFFFF");
                 label.textAlign = "left";
                 label.textBaseline = "middle";
                 label.x = 855;
@@ -891,10 +891,13 @@ frame.on("ready", () => {
                 selectedWordLabels.push(label);
             });
 
-            const completionRatio = words.length ? wordIndex / words.length : 0;
+            const totalWords = words.length;
+            const completedWords = Math.min(totalWords, Math.max(0, Number(completedCount) || 0));
+            const completionRatio = totalWords ? completedWords / totalWords : 0;
+            progressLabel.text = `Level Progress: ${Math.round(completionRatio * 100)}%`;
             progressFill.graphics.clear()
                 .beginFill("#FFF2A8")
-                .drawRoundRect(0, 0, 260 * completionRatio, 16, 8);
+                .drawRoundRect(0, 0, progressBarWidth * completionRatio, 16, 8);
             stage.update();
         }
         updateCampaignStatus();
@@ -902,6 +905,20 @@ frame.on("ready", () => {
         // Keep tool artwork above the rest of the scene, including the info panel.
         toolDisplayRefs.forEach(tool => stage.addChild(tool));
         stage.update(); // Refresh the stage.
+    }).catch(error => {
+        console.error("[startup] Game initialization failed:", error);
+        const stage = frame.stage;
+        const message = new createjs.Text(
+            `Unable to start the game.\n${error.message}`,
+            "bold 22px Arial",
+            "#FFFFFF"
+        );
+        message.textAlign = "center";
+        message.textBaseline = "middle";
+        message.x = frame.width / 2;
+        message.y = frame.height / 2;
+        stage.addChild(message);
+        stage.update();
     });
 });
 </script>

@@ -1,7 +1,21 @@
 window.SanskritSmith = window.SanskritSmith || {};
 
-SanskritSmith.loadJson = (url, fallback) =>
-    fetch(url).then(response => response.json()).catch(() => fallback);
+SanskritSmith.loadJson = async url => {
+    let response;
+    try {
+        response = await fetch(url);
+    } catch (error) {
+        throw new Error(`Could not load ${url}: ${error.message}`);
+    }
+    if (!response.ok) {
+        throw new Error(`Could not load ${url}: HTTP ${response.status}`);
+    }
+    try {
+        return await response.json();
+    } catch (error) {
+        throw new Error(`Invalid JSON in ${url}: ${error.message}`);
+    }
+};
 
 SanskritSmith.addOutlinedText = (stage, text, font, x, y) => {
     const textOutline = new createjs.Text(text, font, "#000000");
