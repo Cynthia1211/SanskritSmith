@@ -3,6 +3,7 @@ window.SanskritSmith = window.SanskritSmith || {};
 SanskritSmith.ASSET_PATHS = {
     background: "assets/game/background.jpeg",
     forgingStation: "assets/game/forgingStation.png",
+    logo: "assets/game/SanskritSmith.png",
     targetBackground: "assets/game/targetBackground.png",
     toolBackground: "assets/tools/toolBackground.png",
     assetRoot: "assets/"
@@ -429,6 +430,7 @@ SanskritSmith.createGameUI = ({
     onLevelSelect
 }) => {
     const {
+        rightAreaX,
         rightAreaWidth,
         infoAreaWidth,
         infoAreaX,
@@ -439,21 +441,43 @@ SanskritSmith.createGameUI = ({
     const selectedWordLabels = [];
 
     const infoArea = new createjs.Shape();
-    infoArea.graphics.beginFill("rgba(204, 204, 204, 0.3)")
+    infoArea.graphics.beginFill("rgba(204, 204, 204, 0.2)")
         .drawRoundRect(0, 0, infoAreaWidth, infoAreaHeight, 16);
     infoArea.x = infoAreaX;
     infoArea.y = 40;
     stage.addChild(infoArea);
 
-    const infoTitle = new createjs.Text("Sanskrit Smith", "bold 40px Arial", "#FFFFFF");
-    infoTitle.textAlign = "left";
-    infoTitle.textBaseline = "middle";
-    infoTitle.x = 840;
-    infoTitle.y = 68;
-    stage.addChild(infoTitle);
+    const panelContentOffsetY = 20;
+    const panelContentStartIndex = stage.children.length;
+    let panelContentShifted = false;
 
     let showHowToPlayPopup = null;
     const controlButtonHeight = 24;
+    const controlButtonY = 150 - controlButtonHeight * 1.5;
+    const logoBitmap = new createjs.Bitmap(SanskritSmith.ASSET_PATHS.logo);
+    const layoutLogo = () => {
+        const imageWidth = logoBitmap.image.naturalWidth || logoBitmap.image.width;
+        const imageHeight = logoBitmap.image.naturalHeight || logoBitmap.image.height;
+        if (!imageWidth || !imageHeight) return;
+
+        const logoScale = 0.32;
+        const logoHeight = imageHeight * logoScale;
+        logoBitmap.scaleX = logoScale;
+        logoBitmap.scaleY = logoScale;
+        logoBitmap.regX = imageWidth / 2;
+        logoBitmap.regY = imageHeight / 2;
+        logoBitmap.x = rightAreaX + rightAreaWidth / 2;
+        logoBitmap.y = controlButtonY - logoHeight / 2
+            + (panelContentShifted ? panelContentOffsetY : 0);
+        logoBitmap.rotation = 2;
+    };
+    logoBitmap.image.onload = () => {
+        layoutLogo();
+        stage.update();
+    };
+    layoutLogo();
+    stage.addChild(logoBitmap);
+
     const controlButtonGap = 10;
     const controlButtons = [
         {label: "How to Play", width: 90},
@@ -469,7 +493,7 @@ SanskritSmith.createGameUI = ({
         button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#000000")
             .drawRoundRect(0, 0, width, controlButtonHeight, 6);
         button.x = controlButtonX;
-        button.y = 150 - controlButtonHeight * 1.5;
+        button.y = controlButtonY;
         button.cursor = "pointer";
         stage.addChild(button);
         if (label === "How to Play") {
@@ -518,7 +542,7 @@ SanskritSmith.createGameUI = ({
         label.textAlign = align;
         label.textBaseline = "middle";
         label.x = x;
-        label.y = y;
+        label.y = y + (panelContentShifted ? panelContentOffsetY : 0);
         stage.addChild(label);
         return label;
     };
@@ -817,7 +841,7 @@ SanskritSmith.createGameUI = ({
         const scaleY = bounds.height / frame.height;
         levelDropdown.style.borderWidth = `${2 * Math.min(scaleX, scaleY)}px`;
         levelDropdown.style.left = `${bounds.left + infoSectionX * scaleX}px`;
-        levelDropdown.style.top = `${bounds.top + 295 * scaleY}px`;
+        levelDropdown.style.top = `${bounds.top + (295 + panelContentOffsetY) * scaleY}px`;
         levelDropdown.style.width = `${infoSectionWidth * scaleX}px`;
         levelDropdown.style.height = `${45 * scaleY}px`;
     };
@@ -901,6 +925,11 @@ SanskritSmith.createGameUI = ({
     positionLevelDropdown();
     updateLevelDropdown();
     updateCampaignStatus();
+    stage.children.slice(panelContentStartIndex).forEach(display => {
+        display.y += panelContentOffsetY;
+    });
+    panelContentShifted = true;
+    stage.update();
 
     return {
         updateCampaignStatus,
