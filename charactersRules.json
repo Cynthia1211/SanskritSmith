@@ -7,9 +7,9 @@
     "झ": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.48 } } ],
     "ण": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.42 } } ],
 
-    "स": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.45 } } ],
+    "स": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.35 } } ],
     
-    "त": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.45 } } ],
+    "त": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.42 } } ],
     "म": [ { "audio": "", "tool": "axe", "toolAnimation": "axeSplit", "toolParams": { "hiddenRightRatio": 0.45 } } ],
 
     "क": [ { "audio": "", "tool": "scissors", "toolAnimation": "scissorsTrim", "toolParams": { "hiddenRightRatio": 0.45, "hiddenBottomRatio": 0.45 } } ],

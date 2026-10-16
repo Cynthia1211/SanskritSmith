@@ -11,3 +11,20 @@ canvas {
     display: block;
     -webkit-tap-highlight-color: transparent;
 }
+
+.level-selector {
+    position: fixed;
+    z-index: 10;
+    box-sizing: border-box;
+    padding: 0 42px 0 12px;
+    border: 2px solid #000;
+    border-radius: 12px;
+    -webkit-appearance: none;
+    appearance: none;
+    background-color: #FFF2A8;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    color: #000;
+    font: bold 40px Arial;
+}

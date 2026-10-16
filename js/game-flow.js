@@ -15,11 +15,7 @@ SanskritSmith.createCampaign = (levels, random = Math.random) => {
             const swapIndex = Math.floor(random() * (index + 1));
             [pool[index], pool[swapIndex]] = [pool[swapIndex], pool[index]];
         }
-        const configuredCount = Number(level.wordsPerRound ?? level.wordCount ?? 5);
-        const count = Number.isFinite(configuredCount) && configuredCount > 0
-            ? Math.floor(configuredCount)
-            : 5;
-        return pool.slice(0, count);
+        return pool.slice(0, 5);
     };
 
     let words = pickWords(levels[levelIndex]);
@@ -40,6 +36,15 @@ SanskritSmith.createCampaign = (levels, random = Math.random) => {
         get word() { return words[wordIndex] || null; },
         get stepIndex() { return stepIndex; },
         get step() { return this.word?.targetSlots?.[stepIndex] || null; },
+        startLevel(index) {
+            if (!Number.isInteger(index) || index < 0 || index >= levels.length) return false;
+            levelIndex = index;
+            wordIndex = 0;
+            stepIndex = 0;
+            words = pickWords(levels[levelIndex]);
+            skipEmptyLevels();
+            return levelIndex < levels.length;
+        },
         advanceStep() {
             stepIndex += 1;
             return this.step;
