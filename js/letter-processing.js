@@ -129,13 +129,16 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
     const centerX = firstSlotCenterX;
     const centerY = targetArea.letterY + targetArea.letterHeight / 2;
     const collapseTargets = [];
+    const questionMarkTargets = [];
 
     positions.forEach(position => {
         const slotX = targetArea.letterStartX + (position - 1) * (targetArea.letterWidth + targetArea.letterGap);
         const textRef = targetArea.targetTextRefs[position - 1];
         const box = targetArea.targetBoxRefs[position - 1];
+        const isQuestionMark = textRef?.textFill?.text === "?";
         if (textRef) {
             [textRef.textOutline, textRef.textFill].forEach(text => {
+                if (!text) return;
                 createjs.Tween.removeTweens(text);
                 text.x = slotX + targetArea.letterWidth / 2;
                 text.y = centerY;
@@ -143,17 +146,18 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
                 text.scaleY = 1;
                 text.alpha = 1;
                 text.visible = true;
-                collapseTargets.push(text);
+                (isQuestionMark ? questionMarkTargets : collapseTargets).push(text);
             });
         }
         if (box) {
             createjs.Tween.removeTweens(box);
             box.alpha = 1;
-            box.visible = false;
+            box.visible = isQuestionMark;
+            if (isQuestionMark) questionMarkTargets.push(box);
         }
     });
 
-    let remaining = collapseTargets.length;
+    let remaining = collapseTargets.length + questionMarkTargets.length;
     let finished = false;
     const finishCollapse = () => {
         if (finished) return;
@@ -165,7 +169,9 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
         collapseTargets.forEach(target => {
             createjs.Tween.removeTweens(target);
             target.visible = false;
-            stage.removeChild(target);
+            if (!targetArea.targetBoxRefs.includes(target)) {
+                stage.removeChild(target);
+            }
         });
         // Clear every collapsed slot's text ref so a later step cannot
         // make stale letters visible again when it resets tween state.
@@ -231,19 +237,26 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
         return;
     }
 
+    const completeTarget = () => {
+        remaining -= 1;
+        console.log("[targetConjunct] collapse tween completed", {
+            remaining,
+            total: collapseTargets.length + questionMarkTargets.length
+        });
+        if (remaining === 0) finishCollapse();
+    };
+
     collapseTargets.forEach(target => {
-        createjs.Tween.get(target)
+        const tween = createjs.Tween.get(target)
             .to({x: centerX, y: centerY}, 400)
-            .to({alpha: 0}, 300)
-            .on("change", () => stage.update())
-            .call(() => {
-                remaining -= 1;
-                console.log("[targetConjunct] collapse tween completed", {
-                    remaining,
-                    total: collapseTargets.length
-                });
-                if (remaining === 0) finishCollapse();
-            });
+            .to({alpha: 0}, 300);
+        tween.on("change", () => stage.update());
+        tween.call(completeTarget);
+    });
+    questionMarkTargets.forEach(target => {
+        const tween = createjs.Tween.get(target).to({alpha: 0}, 300);
+        tween.on("change", () => stage.update());
+        tween.call(completeTarget);
     });
 
     // Keep the replacement from depending exclusively on CreateJS
