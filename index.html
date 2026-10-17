@@ -92,7 +92,7 @@ frame.on("ready", () => {
 
         const layout = SanskritSmith.calculateGameLayout(frame, targetBarImage);
         const {
-            targetBarX, targetBarY, targetBarWidth, targetBarHeight,
+            targetBarX, targetBarWidth,
             toolsAreaX, toolsAreaWidth
         } = layout;
 
@@ -336,12 +336,15 @@ frame.on("ready", () => {
                 advanceToNextStep: () => advanceToNextProcessingStep(),
                 defaultHiddenRightRatio: hiddenRightRatio
             });
-            const showScissorsCutLines = false;
+            const showScissorsCutLines = true;
             updateScissorsCutLines = () => {
                 const step = currentWord.targetSlots[stepIndex];
-                const rule = step?.tool?.toLowerCase() === "scissors"
+                const toolName = step?.tool?.toLowerCase();
+                const isAxe = toolName === "axe";
+                const isScissors = toolName === "scissors";
+                const rule = isAxe || isScissors
                     ? (characterRules[processingLetter.text]?.tools || []).find(candidate =>
-                        candidate.tool?.toLowerCase() === "scissors"
+                        candidate.tool?.toLowerCase() === toolName
                     )
                     : null;
                 if (!rule) {
@@ -354,8 +357,9 @@ frame.on("ready", () => {
                 const params = rule.toolParams || {};
                 const rightRatio = Number(params.hiddenRightRatio);
                 const bottomRatio = Number(params.hiddenBottomRatio);
-                const rightCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(rightRatio) ? rightRatio : 0.45)));
-                const bottomCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(bottomRatio) ? bottomRatio : 0.45)));
+                const rightCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(rightRatio) ? rightRatio : hiddenRightRatio)));
+                const effectiveBottomRatio = isAxe ? -0.5 : Number.isFinite(bottomRatio) ? bottomRatio : 0.45;
+                const bottomCutRatio = Math.max(0, Math.min(1, 0.5 + effectiveBottomRatio));
                 const cutX = processingLetterBox.x + processingLetterSize * rightCutRatio;
                 const cutY = processingLetterBox.y + processingLetterSize * bottomCutRatio;
                 scissorsCutLines.x = scissorsCutLines.y = 0;
@@ -363,12 +367,16 @@ frame.on("ready", () => {
                 scissorsCutLines.scaleX = scissorsCutLines.scaleY = 1;
                 scissorsCutLines.alpha = 1;
                 scissorsCutLines.graphics.clear()
-                    .setStrokeStyle(4)
+                    .setStrokeStyle(2)
+                    .setStrokeDash([6, 5], 0)
                     .beginStroke("#ff0000")
                     .moveTo(cutX, processingLetterBox.y)
-                    .lineTo(cutX, processingLetterBox.y + processingLetterSize)
-                    .moveTo(processingLetterBox.x, cutY)
-                    .lineTo(processingLetterBox.x + processingLetterSize, cutY);
+                    .lineTo(cutX, processingLetterBox.y + processingLetterSize);
+                if (isAxe || isScissors) {
+                    scissorsCutLines.graphics
+                        .moveTo(processingLetterBox.x, cutY)
+                        .lineTo(processingLetterBox.x + processingLetterSize, cutY);
+                }
                 scissorsCutLines.visible = showScissorsCutLines;
                 stage.update();
             };
@@ -425,27 +433,6 @@ frame.on("ready", () => {
         });
         targetArea.render(currentWord);
         targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
-
-        const targetBarInteraction = new createjs.Shape();
-        targetBarInteraction.graphics
-            .beginFill("rgba(255, 255, 255, 0.01)")
-            .drawRect(0, 0, targetBarWidth, targetBarHeight);
-        targetBarInteraction.x = targetBarX;
-        targetBarInteraction.y = targetBarY;
-        targetBarInteraction.cursor = "pointer";
-        targetBarInteraction.on("click", () => {
-            const step = currentWord.targetSlots[stepIndex];
-            console.log("[targetConjunct] targetbar clicked", {
-                stepIndex,
-                targetPositions: step && step.targetPositions,
-                targetConjunct: step && step.targetConjunct
-            });
-            if (!step) return;
-            const isCompleteStep = SanskritSmith.isCompleteTargetStep(step);
-            if (isCompleteStep) targetAnimator.animateCompleteConjunct(step);
-            else targetAnimator.animateTargetPositionsToConjunct(step);
-        });
-        stage.addChild(targetBarInteraction);
 
         function updateProcessingLetter(letterParts, processingLetter) {
             const step = currentWord.targetSlots[stepIndex];
