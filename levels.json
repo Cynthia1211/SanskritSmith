@@ -1,8 +1,21 @@
 {
   "levels": [
         {
+      "id": "level_0",
+      "toolsOptions" : ["axe", "scissors", "gem", "hook", "hammer"],
+      "wordPools": [
+        {
+          "id": 1, "word": "क्ष", "meaning": "XXX",
+          "letters": ["क", "ष"], "initial":["_", "ष"],
+          "targetSlots": [
+            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["1", "2"], "targetConjunct": "क्ष"},
+            {"step": 1, "processingPosition": "", "processingLetter": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "क्ष"}
+          ]
+        }
+      ]
+    },
+        {
       "id": "level_1",
-      "wordsPerRound": 2,
       "toolsOptions" : ["axe", "scissors", "gem", "hook"],
       "wordPools": [
         {
@@ -52,14 +65,13 @@
     },
     {
       "id": "level_99",
-      "wordsPerRound": 3,
       "toolsOptions" : ["axe", "scissors", "gem", "hook", "hammer"],
       "wordPools": [
         {
           "id": 1, "word": "क्ष", "meaning": "XXX",
           "letters": ["क", "ष"], "initial":["_", "ष"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "क्ष"},
+            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["1", "2"], "targetConjunct": "क्ष"},
             {"step": 1, "processingPosition": "", "processingLetter": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "क्ष"}
           ]
         },
@@ -67,7 +79,7 @@
           "id": 2, "word": "ज्ञ", "meaning": "XXX",
           "letters": ["ज", "्ञ"], "initial":["_", "्ञ"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "ज्ञ"},
+            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["1", "2"], "targetConjunct": "ज्ञ"},
             {"step": 1, "processingPosition": "", "processingLetter": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "ज्ञ"}
           ]
         },
@@ -75,7 +87,7 @@
           "id": 3, "word": "त्र", "meaning": "XXX",
           "letters": ["त", "्र"], "initial":["_", "्र"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "त्र"},
+            {"step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["1", "2"], "targetConjunct": "त्र"},
             {"step": 1, "processingPosition": "", "processingLetter": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "त्र"}
           ]
         }

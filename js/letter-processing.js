@@ -574,6 +574,128 @@ SanskritSmith.createLetterProcessor = ({
         return animation;
     };
 
+    const hammerReforge = () => {
+        const step = getCurrentStep();
+        const position = Number(step?.processingPosition);
+        const followingPosition = position + 1;
+        const followingBox = getTargetBox(followingPosition);
+        if (!Number.isInteger(position) || !followingBox) {
+            return genericToolAnimation();
+        }
+
+        const letter = letterParts.singleLetter;
+        const sourceText = letter.text;
+        letterParts.setMode("single");
+        letter.visible = true;
+        letter.alpha = 1;
+        const targetScaleX = letterWidth / processingLetterSize;
+        const targetScaleY = letterHeight / processingLetterSize;
+        const letterX = processingLetterBox.x + processingLetterSize / 2;
+        const letterY = processingLetterBox.y + processingLetterSize / 2;
+        letter.x = letterX;
+        letter.y = letterY;
+        letter.regX = letter.regY = 0;
+
+        const startIncomingLetter = () => {
+            const followingText = getTargetLetter(followingPosition);
+            if (!followingText) {
+                letter.scaleX = letter.scaleY = 1;
+                stage.update();
+                return;
+            }
+            removeTargetText(followingPosition);
+            followingBox.visible = false;
+
+            const incomingLetter = new createjs.Text(followingText, letter.font, letter.color);
+            incomingLetter.textAlign = "center";
+            incomingLetter.textBaseline = "middle";
+            incomingLetter.x = followingBox.x + letterWidth / 2;
+            incomingLetter.y = followingBox.y + letterHeight / 2;
+            incomingLetter.scaleX = targetScaleX;
+            incomingLetter.scaleY = targetScaleY;
+            stage.addChild(incomingLetter);
+            stage.update();
+
+            const startSmash = () => {
+                const shardCount = 15 + Math.floor(Math.random() * 6);
+                const shards = [];
+                const shardStageIndex = Math.max(0, stage.getChildIndex(letter));
+                let firstShardTween = null;
+                letter.visible = false;
+                incomingLetter.visible = false;
+
+                for (let index = 0; index < shardCount; index += 1) {
+                    const width = 4 + Math.random() * 7;
+                    const height = 4 + Math.random() * 7;
+                    const shard = new createjs.Shape();
+                    shard.graphics.beginFill("#FFFFFF")
+                        .moveTo(0, -height / 2)
+                        .lineTo(width / 2, -height / 4)
+                        .lineTo(width / 3, height / 2)
+                        .lineTo(-width / 2, height / 4)
+                        .closePath();
+                    shard.x = letterX + (Math.random() - 0.5) * letterWidth;
+                    shard.y = letterY + (Math.random() - 0.5) * letterHeight;
+                    stage.addChildAt(shard, Math.min(shardStageIndex, stage.numChildren));
+                    shards.push(shard);
+
+                    const angle = Math.random() * Math.PI * 2;
+                    const distance = 12 + Math.random() * 38;
+                    const shardTween = createjs.Tween.get(shard)
+                        .to({
+                            x: shard.x + Math.cos(angle) * distance,
+                            y: shard.y + Math.sin(angle) * distance + 5 + Math.random() * 14,
+                            rotation: (Math.random() - 0.5) * 360
+                        }, 350)
+                        .wait(500)
+                        .to({
+                            x: letterX,
+                            y: letterY,
+                            scaleX: 0,
+                            scaleY: 0,
+                            alpha: 0
+                        }, 300);
+                    shardTween.on("change", () => stage.update());
+                    if (index === 0) firstShardTween = shardTween;
+                }
+                stage.removeChild(incomingLetter);
+                stage.update();
+
+                const finishShards = () => {
+                    shards.forEach(shard => stage.removeChild(shard));
+                    letterParts.setText(step.targetConjunct || sourceText);
+                    letter.scaleX = letter.scaleY = 0;
+                    letter.x = letterX;
+                    letter.y = letterY;
+                    letter.alpha = 0;
+                    letter.visible = true;
+                    stage.update();
+
+                    const targetFade = createjs.Tween.get(letter)
+                        .to({alpha: 1, scaleX: 1, scaleY: 1}, 500, createjs.Ease.backOut);
+                    targetFade.on("change", () => stage.update());
+                    continueOnce(targetFade, 550, () => {
+                        animateProcessedLetterToTarget(0.5, 0.5);
+                    }, "hammerReforgeTargetFade");
+                };
+                continueOnce(firstShardTween, 1200, finishShards, "hammerReforgeShatter");
+            };
+
+            const joinAnimation = createjs.Tween.get(incomingLetter)
+                .to({x: letterX, y: letterY}, 500)
+                .wait(100);
+            joinAnimation.on("change", () => stage.update());
+            continueOnce(joinAnimation, 650, startSmash, "hammerReforgeJoin");
+        };
+
+        const shrinkAnimation = createjs.Tween.get(letter)
+            .to({scaleX: targetScaleX, scaleY: targetScaleY}, 350);
+        shrinkAnimation.on("change", () => stage.update());
+        continueOnce(shrinkAnimation, 400, startIncomingLetter, "hammerReforgeShrink");
+        stage.update();
+        return shrinkAnimation;
+    };
+
     const handlers = {
         axeSplit: params => {
             const value = Number(params.hiddenRightRatio);
@@ -593,7 +715,8 @@ SanskritSmith.createLetterProcessor = ({
             );
         },
         gemHalant,
-        hookJoin
+        hookJoin,
+        hammerReforge
     };
 
     return {
