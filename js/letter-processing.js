@@ -120,20 +120,13 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
     }
 
     const firstPosition = positions[0];
-    const lastPosition = positions[positions.length - 1];
-    const left = targetArea.letterStartX + (firstPosition - 1) * (targetArea.letterWidth + targetArea.letterGap);
-    const right = targetArea.letterStartX + (lastPosition - 1) * (targetArea.letterWidth + targetArea.letterGap) + targetArea.letterWidth;
-    const processingPosition = Number(step.processingPosition);
-    const hasProcessingPosition = Number.isInteger(processingPosition)
-        && processingPosition > 0
-        && processingPosition <= targetArea.targetBoxRefs.length;
-    const centerX = completeMode
-        ? targetBarX + targetBarWidth / 2
-        : isFinalStep
-            ? SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap)
-        : hasProcessingPosition
-            ? SanskritSmith.getTargetSlotCenterX(processingPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap)
-            : (left + right) / 2;
+    const firstSlotCenterX = SanskritSmith.getTargetSlotCenterX(
+        firstPosition,
+        targetArea.letterStartX,
+        targetArea.letterWidth,
+        targetArea.letterGap
+    );
+    const centerX = firstSlotCenterX;
     const centerY = targetArea.letterY + targetArea.letterHeight / 2;
     const collapseTargets = [];
 
@@ -155,14 +148,8 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
         }
         if (box) {
             createjs.Tween.removeTweens(box);
-            box.regX = targetArea.letterWidth / 2;
-            box.regY = targetArea.letterHeight / 2;
-            box.x = slotX + targetArea.letterWidth / 2;
-            box.y = centerY;
-            box.scaleX = 1;
-            box.scaleY = 1;
-            box.visible = true;
-            collapseTargets.push(box);
+            box.alpha = 1;
+            box.visible = false;
         }
     });
 
@@ -197,6 +184,15 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
             centerY
         );
         targetArea.targetTextRefs[firstPosition - 1] = replacementText;
+        const replacementParts = [replacementText.textOutline, replacementText.textFill];
+        replacementParts.forEach(text => { text.alpha = 0; });
+        stage.update();
+        const replacementFade = createjs.Tween.get(replacementParts[0])
+            .to({alpha: 1}, 800);
+        replacementFade.on("change", () => stage.update());
+        const replacementFillFade = createjs.Tween.get(replacementParts[1])
+            .to({alpha: 1}, 800);
+        replacementFillFade.on("change", () => stage.update());
         if (isFinalStep) {
             let displayFinished = false;
             const finishDisplay = () => {
@@ -208,16 +204,8 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
                     if (onComplete) onComplete();
                 }, 1000);
             };
-            [replacementText.textOutline, replacementText.textFill].forEach(text => {
-                text.alpha = 0;
-                text.scaleX = 0.75;
-                text.scaleY = 0.75;
-                createjs.Tween.get(text)
-                    .to({alpha: 1, scaleX: 1.3, scaleY: 1.3}, 525)
-                    .on("change", () => stage.update());
-            });
-            window.setTimeout(finishDisplay, 575);
-            stage.update();
+            replacementFade.call(finishDisplay);
+            window.setTimeout(finishDisplay, 850);
             return;
         }
         console.log("[targetConjunct] replacement created", {
@@ -227,9 +215,15 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
             visible: replacementText.textFill.visible,
             stageChildCount: stage.numChildren
         });
-        stage.update();
-        isAnimating = false;
-        if (onComplete) onComplete();
+        let replacementFinished = false;
+        const finishReplacement = () => {
+            if (replacementFinished) return;
+            replacementFinished = true;
+            isAnimating = false;
+            if (onComplete) onComplete();
+        };
+        replacementFade.call(finishReplacement);
+        window.setTimeout(finishReplacement, 850);
     };
 
     if (!remaining) {
@@ -239,7 +233,8 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
 
     collapseTargets.forEach(target => {
         createjs.Tween.get(target)
-            .to({x: centerX, y: centerY, scaleX: 0, scaleY: 0, alpha: 0}, 400)
+            .to({x: centerX, y: centerY}, 400)
+            .to({alpha: 0}, 300)
             .on("change", () => stage.update())
             .call(() => {
                 remaining -= 1;
@@ -262,7 +257,7 @@ const animateConjunctPositions = (step, onComplete, completeMode = false) => {
             });
             finishCollapse();
         }
-    }, 450);
+    }, 800);
 }
 
     return {
