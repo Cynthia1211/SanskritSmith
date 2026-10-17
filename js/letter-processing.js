@@ -28,6 +28,7 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
 
     const axeVisual = {letters: [firstLetter, secondLetter], masks: [firstMask, secondMask], shrinkMode: "cut"};
     const singleVisual = {letters: [singleLetter], masks: [], shrinkMode: "center"};
+    const trimVisual = {letters: [singleLetter], masks: [secondMask], shrinkMode: "trim"};
     let visual = axeVisual;
 
     return {
@@ -38,10 +39,16 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
         singleLetter,
         get visual() { return visual; },
         setMode(mode) {
-            visual = mode === "axe" ? axeVisual : singleVisual;
+            visual = mode === "axe" ? axeVisual : mode === "trim" ? trimVisual : singleVisual;
+            if (mode === "axe") {
+                [firstMask, secondMask].forEach(mask => {
+                    mask.graphics.clear().beginFill("#000000").drawRect(0, 0, size, size);
+                });
+            }
             firstLetter.visible = mode === "axe";
             secondLetter.visible = false;
             singleLetter.visible = mode !== "axe";
+            singleLetter.mask = mode === "trim" ? secondMask : null;
             [firstMask, secondMask].forEach(mask => {
                 mask.visible = visual.masks.includes(mask);
             });
@@ -73,6 +80,9 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
             firstMask.y = secondMask.y = box.y;
             firstMask.scaleX = secondMask.scaleX = 1;
             firstMask.scaleY = secondMask.scaleY = 1;
+            [firstMask, secondMask].forEach(mask => {
+                mask.graphics.clear().beginFill("#000000").drawRect(0, 0, size, size);
+            });
             singleLetter.x = box.x + size / 2;
             singleLetter.y = box.y + size / 2;
             this.setMode(mode);
@@ -274,12 +284,15 @@ SanskritSmith.createLetterProcessor = ({
     stage,
     createjs,
     letterParts,
+    scissorsCutLines,
     processingLetterBox,
     processingLetterSize,
     letterWidth,
     letterHeight,
     getCurrentStep,
     getTargetBox,
+    getTargetLetter,
+    removeTargetText,
     animateTargetPositionsToConjunct,
     advanceToNextStep,
     defaultHiddenRightRatio
@@ -300,10 +313,21 @@ SanskritSmith.createLetterProcessor = ({
             }
         }, fallbackDelay);
     };
+    const getRightCutPositionRatio = hiddenRightRatio =>
+        Math.max(0, Math.min(1, 0.5 + hiddenRightRatio));
+    const getBottomCutPositionRatio = hiddenBottomRatio =>
+        Math.max(0, Math.min(1, 0.5 + hiddenBottomRatio));
 
-    const animateProcessedLetterToTarget = (visual = letterParts.visual) => {
+    const animateProcessedLetterToTarget = (
+        hiddenRightRatio = 0,
+        hiddenBottomRatio = 0,
+        visual = letterParts.visual
+    ) => {
         const verticalDistance = processingLetterSize * 0.25;
-        const movingParts = [...visual.letters, ...visual.masks];
+        const auxiliaryLines = visual.shrinkMode === "trim" && scissorsCutLines?.visible
+            ? [scissorsCutLines]
+            : [];
+        const movingParts = [...visual.letters, ...visual.masks, ...auxiliaryLines];
         const moveAndFadeToProcessingPosition = () => {
             const step = getCurrentStep();
             const targetBox = step?.processingPosition
@@ -323,11 +347,19 @@ SanskritSmith.createLetterProcessor = ({
                 if (flightFinished) return;
                 flightFinished = true;
                 letterParts.hide();
+                if (auxiliaryLines.length) auxiliaryLines.forEach(line => { line.visible = false; });
                 stage.update();
-                console.log("[processedLetter] flight finished; starting target conjunct", {
+                console.log("[processedLetter] flight finished; checking target conjunct", {
                     targetPositions: step.targetPositions,
                     targetConjunct: step.targetConjunct
                 });
+                const isEmptyTargetValue = value => value == null
+                    || value === ""
+                    || (Array.isArray(value) && value.length === 0);
+                if (isEmptyTargetValue(step.targetPositions) && isEmptyTargetValue(step.targetConjunct)) {
+                    advanceToNextStep();
+                    return;
+                }
                 animateTargetPositionsToConjunct(step, advanceToNextStep);
             };
 
@@ -339,6 +371,11 @@ SanskritSmith.createLetterProcessor = ({
             const flights = visual.letters.map(letter => createjs.Tween.get(letter)
                 .to({x: letter.x + moveX, y: letter.y + moveY, alpha: 0}, 500)
                 .on("change", () => stage.update()));
+            auxiliaryLines.forEach(line => {
+                createjs.Tween.get(line)
+                    .to({x: line.x + moveX, y: line.y + moveY, alpha: 0}, 500)
+                    .on("change", () => stage.update());
+            });
             const firstFlight = flights[0];
             continueOnce(firstFlight, 550, finishFlight, "flight");
         };
@@ -346,24 +383,44 @@ SanskritSmith.createLetterProcessor = ({
         const shrinkToTargetSize = () => {
             const targetScaleX = letterWidth / processingLetterSize;
             const targetScaleY = letterHeight / processingLetterSize;
-            const shrinkLetter = (letter, boundaryX) => {
-                letter.regX = boundaryX - letter.x;
-                letter.x = boundaryX;
-                createjs.Tween.get(letter)
-                    .to({scaleX: targetScaleX, scaleY: targetScaleY}, 400)
-                    .on("change", () => stage.update());
-            };
+            const scaleLetter = letter => createjs.Tween.get(letter, {override: true})
+                .to({scaleX: targetScaleX, scaleY: targetScaleY}, 400)
+                .on("change", () => stage.update());
 
             if (visual.shrinkMode === "cut") {
-                shrinkLetter(secondLetter, secondLetterMask.x);
-                shrinkLetter(firstLetter, firstLetterMask.x + processingLetterSize * firstLetterMask.scaleX);
+                const shrinkAtBoundary = (letter, boundaryX) => {
+                    letter.regX = boundaryX - letter.x;
+                    letter.x = boundaryX;
+                    return scaleLetter(letter);
+                };
+                shrinkAtBoundary(secondLetter, secondLetterMask.x);
+                shrinkAtBoundary(firstLetter, firstLetterMask.x + processingLetterSize * firstLetterMask.scaleX);
+            } else if (visual.shrinkMode === "trim") {
+                const trimMask = letterParts.secondMask;
+                const crossX = trimMask.x + processingLetterSize * getRightCutPositionRatio(hiddenRightRatio);
+                const crossY = trimMask.y + processingLetterSize * getBottomCutPositionRatio(hiddenBottomRatio);
+                const letter = visual.letters[0];
+                letter.regX = crossX - letter.x;
+                letter.regY = crossY - letter.y;
+                letter.x = crossX;
+                letter.y = crossY;
+                trimMask.regX = crossX - trimMask.x;
+                trimMask.regY = crossY - trimMask.y;
+                trimMask.x = crossX;
+                trimMask.y = crossY;
+                auxiliaryLines.forEach(line => {
+                    line.regX = crossX - line.x;
+                    line.regY = crossY - line.y;
+                    line.x = crossX;
+                    line.y = crossY;
+                });
+                scaleLetter(letter);
+                scaleLetter(trimMask);
+                auxiliaryLines.forEach(scaleLetter);
             } else {
                 const letter = visual.letters[0];
-                letter.regX = 0;
-                letter.regY = 0;
-                createjs.Tween.get(letter)
-                    .to({scaleX: targetScaleX, scaleY: targetScaleY}, 400)
-                    .on("change", () => stage.update());
+                letter.regX = letter.regY = 0;
+                scaleLetter(letter);
             }
             const finishShrink = createjs.Tween.get(visual.letters[0]).wait(400);
             continueOnce(finishShrink, 450, moveAndFadeToProcessingPosition, "shrink");
@@ -379,7 +436,8 @@ SanskritSmith.createLetterProcessor = ({
     };
 
     const axeSplit = hiddenRightRatio => {
-        const visibleLeftRatio = 1 - hiddenRightRatio;
+        const visibleLeftRatio = getRightCutPositionRatio(hiddenRightRatio);
+        const hiddenRightWidthRatio = 1 - visibleLeftRatio;
         createjs.Tween.removeTweens(firstLetterMask);
         createjs.Tween.removeTweens(secondLetterMask);
         createjs.Tween.removeTweens(secondLetter);
@@ -394,7 +452,7 @@ SanskritSmith.createLetterProcessor = ({
 
         firstLetterMask.scaleX = visibleLeftRatio;
         secondLetterMask.x = processingLetterBox.x + processingLetterSize * visibleLeftRatio;
-        secondLetterMask.scaleX = hiddenRightRatio;
+        secondLetterMask.scaleX = hiddenRightWidthRatio;
         stage.update();
 
         const slideDistance = processingLetterSize * 0.35;
@@ -406,9 +464,36 @@ SanskritSmith.createLetterProcessor = ({
             .on("change", () => stage.update());
         continueOnce(splitTween, 550, () => {
             stage.update();
-            animateProcessedLetterToTarget();
+            animateProcessedLetterToTarget(hiddenRightRatio, 0);
         }, "axeSplit");
         return splitTween;
+    };
+
+    const scissorsTrim = (hiddenRightRatio, hiddenBottomRatio) => {
+        const trimMask = letterParts.secondMask;
+        createjs.Tween.removeTweens(trimMask);
+        trimMask.x = processingLetterBox.x;
+        trimMask.y = processingLetterBox.y;
+        trimMask.scaleX = trimMask.scaleY = 1;
+        trimMask.regX = trimMask.regY = 0;
+        trimMask.graphics.clear().beginFill("#000000")
+            .drawRect(0, 0, processingLetterSize * getRightCutPositionRatio(hiddenRightRatio), processingLetterSize)
+            .drawRect(0, 0, processingLetterSize, processingLetterSize * getBottomCutPositionRatio(hiddenBottomRatio));
+        const letter = letterParts.singleLetter;
+        letter.regX = letter.regY = 0;
+        letter.x = processingLetterBox.x + processingLetterSize / 2;
+        letter.y = processingLetterBox.y + processingLetterSize / 2;
+        letter.alpha = 1;
+        letter.scaleX = letter.scaleY = 1;
+        stage.update();
+        const animation = createjs.Tween.get(letter)
+            .to({alpha: 0.75}, 180)
+            .to({alpha: 1}, 180);
+        continueOnce(animation, 420, () => {
+            stage.update();
+            animateProcessedLetterToTarget(hiddenRightRatio, hiddenBottomRatio);
+        }, "scissorsTrim");
+        return animation;
     };
 
     const genericToolAnimation = () => {
@@ -422,6 +507,78 @@ SanskritSmith.createLetterProcessor = ({
         return animation;
     };
 
+    const gemHalant = params => {
+        const withHalant = typeof params.withHalant === "string" ? params.withHalant : "";
+        if (!withHalant) return genericToolAnimation();
+
+        const letter = letterParts.singleLetter;
+        const originalLetter = letterParts.firstLetter;
+        originalLetter.text = letter.text;
+        originalLetter.x = letter.x;
+        originalLetter.y = letter.y;
+        originalLetter.scaleX = letter.scaleX;
+        originalLetter.scaleY = letter.scaleY;
+        originalLetter.regX = letter.regX;
+        originalLetter.regY = letter.regY;
+        originalLetter.mask = null;
+        originalLetter.alpha = 1;
+        originalLetter.visible = true;
+        letter.text = withHalant;
+        letter.alpha = 0;
+        letter.visible = true;
+        stage.update();
+        const animation = createjs.Tween.get(letter)
+            .to({alpha: 1}, 200)
+            .on("change", () => stage.update());
+        continueOnce(animation, 450, () => {
+            originalLetter.visible = false;
+            stage.update();
+            advanceToNextStep();
+        }, "gemHalant");
+        return animation;
+    };
+
+    const hookJoin = () => {
+        const step = getCurrentStep();
+        const position = Number(step?.processingPosition);
+        const followingPosition = position + 1;
+        const followingBox = getTargetBox(followingPosition);
+        const followingText = getTargetLetter(followingPosition);
+        if (!Number.isInteger(position) || !followingBox || !followingText) {
+            return genericToolAnimation();
+        }
+
+        removeTargetText(followingPosition);
+
+        const letter = letterParts.singleLetter;
+        const incomingLetter = new createjs.Text(followingText, letter.font, letter.color);
+        incomingLetter.textAlign = "center";
+        incomingLetter.textBaseline = "middle";
+        incomingLetter.x = followingBox.x + letterWidth / 2;
+        incomingLetter.y = followingBox.y + letterHeight / 2;
+        incomingLetter.scaleX = letterWidth / processingLetterSize;
+        incomingLetter.scaleY = letterHeight / processingLetterSize;
+        stage.addChild(incomingLetter);
+
+        const animation = createjs.Tween.get(incomingLetter)
+            .to({
+                x: letter.x,
+                y: letter.y,
+                scaleX: 1,
+                scaleY: 1,
+                alpha: 0
+            }, 500)
+            .on("change", () => stage.update());
+        continueOnce(animation, 550, () => {
+            stage.removeChild(incomingLetter);
+            letterParts.setText(step.targetConjunct || letter.text);
+            letter.alpha = 1;
+            stage.update();
+            animateProcessedLetterToTarget(0.5, 0.5);
+        }, "hookJoin");
+        return animation;
+    };
+
     const handlers = {
         axeSplit: params => {
             const value = Number(params.hiddenRightRatio);
@@ -429,12 +586,24 @@ SanskritSmith.createLetterProcessor = ({
                 ? value
                 : defaultHiddenRightRatio;
             return axeSplit(ratio);
-        }
+        },
+        scissorsTrim: params => {
+            const validRatio = (value, fallback) => {
+                const ratio = Number(value);
+                return Number.isFinite(ratio) && ratio > 0 && ratio < 1 ? ratio : fallback;
+            };
+            return scissorsTrim(
+                validRatio(params.hiddenRightRatio, 0.45),
+                validRatio(params.hiddenBottomRatio, 0.45)
+            );
+        },
+        gemHalant,
+        hookJoin
     };
 
     return {
         run(animationName, params = {}) {
-            letterParts.setMode(animationName === "axeSplit" ? "axe" : "single");
+            letterParts.setMode(animationName === "axeSplit" ? "axe" : animationName === "scissorsTrim" ? "trim" : "single");
             return (handlers[animationName] || genericToolAnimation)(params);
         }
     };

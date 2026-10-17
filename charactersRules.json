@@ -14,7 +14,7 @@
     "ण": { "audio": "",
         "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.42}} ] },
     "स": { "audio": "",
-        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.35}} ] },
+        "tools": [ {"tool": "scissors", "toolAnimation": "scissorsTrim", "toolParams": {"hiddenRightRatio": 0.1, "hiddenBottomRatio": 0.05}} ] },
     "त": { "audio": "",
         "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.42}} ] },
     "म": { "audio": "",
