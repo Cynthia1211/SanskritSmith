@@ -1,6 +1,8 @@
 window.SanskritSmith = window.SanskritSmith || {};
 
+/** Creates and resets the display objects used for processing a letter. */
 SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, size}) => {
+    // Create a square mask aligned with the processing-letter box.
     const makeMask = () => {
         const mask = new createjs.Shape();
         mask.graphics.beginFill("#000000").drawRect(0, 0, size, size);
@@ -8,6 +10,7 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
         mask.y = box.y;
         return mask;
     };
+    // Clone the base text and align it to the center of the processing box.
     const makeLetter = mask => {
         const letter = baseLetter.clone();
         letter.textAlign = "center";
@@ -38,6 +41,7 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
         secondMask,
         singleLetter,
         get visual() { return visual; },
+        // Switch between split-letter, trimmed-letter, and whole-letter visuals.
         setMode(mode) {
             visual = mode === "axe" ? axeVisual : mode === "trim" ? trimVisual : singleVisual;
             if (mode === "axe") {
@@ -53,11 +57,13 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
                 mask.visible = visual.masks.includes(mask);
             });
         },
+        // Apply the same text to each backing text object.
         setText(text) {
             firstLetter.text = text;
             secondLetter.text = text;
             singleLetter.text = text;
         },
+        // Hide every processing-letter piece and its masks.
         hide() {
             firstLetter.visible = false;
             secondLetter.visible = false;
@@ -65,6 +71,7 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
             firstMask.visible = false;
             secondMask.visible = false;
         },
+        // Restore positions, scales, masks, visibility, and text for a new step.
         reset(text, showFirst = true, mode = "axe") {
             [firstLetter, secondLetter, singleLetter, firstMask, secondMask].forEach(part => {
                 createjs.Tween.removeTweens(part);
@@ -95,186 +102,194 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
     };
 };
 
+/** Animates selected target-bar letters into a conjunct and handles completion. */
 SanskritSmith.createConjunctAnimator = ({stage, createjs, targetArea, targetBarX, targetBarWidth, addOutlinedText}) => {
     let isAnimating = false;
-const animateConjunctPositions = (step, onComplete, completeMode = false) => {
-    console.log("[targetConjunct] animation started", {
-        targetPositions: step && step.targetPositions,
-        targetConjunct: step && step.targetConjunct
-    });
-    if (isAnimating) return;
-    isAnimating = true;
-    createjs.Tween.removeTweens(targetArea.processingPositionGlow);
-    targetArea.processingPositionGlow.visible = false;
-
-    const processingPositionIsEmpty = step.processingPosition === ""
-        || step.processingPosition == null;
-    const toolIsEmpty = step.tool === "" || step.tool == null;
-    const isFinalStep = completeMode || (processingPositionIsEmpty && toolIsEmpty);
-
-    const positions = SanskritSmith.getTargetPositions(step, targetArea.targetBoxRefs.length);
-    if (!positions.length) {
-        isAnimating = false;
-        if (onComplete) onComplete();
-        return;
-    }
-
-    const firstPosition = positions[0];
-    const firstSlotCenterX = SanskritSmith.getTargetSlotCenterX(
-        firstPosition,
-        targetArea.letterStartX,
-        targetArea.letterWidth,
-        targetArea.letterGap
-    );
-    const centerX = firstSlotCenterX;
-    const centerY = targetArea.letterY + targetArea.letterHeight / 2;
-    const collapseTargets = [];
-
-    positions.forEach(position => {
-        const slotX = targetArea.letterStartX + (position - 1) * (targetArea.letterWidth + targetArea.letterGap);
-        const textRef = targetArea.targetTextRefs[position - 1];
-        const box = targetArea.targetBoxRefs[position - 1];
-        if (textRef) {
-            [textRef.textOutline, textRef.textFill].forEach(text => {
-                createjs.Tween.removeTweens(text);
-                text.x = slotX + targetArea.letterWidth / 2;
-                text.y = centerY;
-                text.scaleX = 1;
-                text.scaleY = 1;
-                text.alpha = 1;
-                text.visible = true;
-                collapseTargets.push(text);
-            });
-        }
-        if (box) {
-            createjs.Tween.removeTweens(box);
-            box.alpha = 1;
-            box.visible = false;
-        }
-    });
-
-    let remaining = collapseTargets.length;
-    let finished = false;
-    const finishCollapse = () => {
-        if (finished) return;
-        finished = true;
-        console.log("[targetConjunct] all collapse tweens finished", {
-            targetConjunct: step.targetConjunct,
-            replacementPosition: firstPosition
+    // Collapse the selected target slots and show their conjunct replacement.
+    const animateConjunctPositions = (step, onComplete, completeMode = false) => {
+        console.log("[targetConjunct] animation started", {
+            targetPositions: step && step.targetPositions,
+            targetConjunct: step && step.targetConjunct
         });
-        collapseTargets.forEach(target => {
-            createjs.Tween.removeTweens(target);
-            target.visible = false;
-            stage.removeChild(target);
-        });
-        // Clear every collapsed slot's text ref so a later step cannot
-        // make stale letters visible again when it resets tween state.
-        positions.forEach(position => {
-            targetArea.targetTextRefs[position - 1] = null;
-        });
+        if (isAnimating) return;
+        isAnimating = true;
+        createjs.Tween.removeTweens(targetArea.processingPositionGlow);
+        targetArea.processingPositionGlow.visible = false;
 
-        const replacementX = isFinalStep
-            ? targetBarX + targetBarWidth / 2
-            : SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap);
-        const replacementFontSize = isFinalStep ? 60 : 50;
-        const replacementText = addOutlinedText(
-            step.targetConjunct || "",
-            `bold ${replacementFontSize}px Arial`,
-            replacementX,
-            centerY
-        );
-        targetArea.targetTextRefs[firstPosition - 1] = replacementText;
-        const replacementParts = [replacementText.textOutline, replacementText.textFill];
-        replacementParts.forEach(text => { text.alpha = 0; });
-        stage.update();
-        const replacementFade = createjs.Tween.get(replacementParts[0])
-            .to({alpha: 1}, 800);
-        replacementFade.on("change", () => stage.update());
-        const replacementFillFade = createjs.Tween.get(replacementParts[1])
-            .to({alpha: 1}, 800);
-        replacementFillFade.on("change", () => stage.update());
-        if (isFinalStep) {
-            let displayFinished = false;
-            const finishDisplay = () => {
-                if (displayFinished) return;
-                displayFinished = true;
-                window.setTimeout(() => {
-                    isAnimating = false;
-                    stage.update();
-                    if (onComplete) onComplete();
-                }, 1000);
-            };
-            replacementFade.call(finishDisplay);
-            window.setTimeout(finishDisplay, 850);
-            return;
-        }
-        console.log("[targetConjunct] replacement created", {
-            text: replacementText.textFill.text,
-            x: replacementText.textFill.x,
-            y: replacementText.textFill.y,
-            visible: replacementText.textFill.visible,
-            stageChildCount: stage.numChildren
-        });
-        let replacementFinished = false;
-        const finishReplacement = () => {
-            if (replacementFinished) return;
-            replacementFinished = true;
+        const processingPositionIsEmpty = step.processingPosition === ""
+            || step.processingPosition == null;
+        const toolIsEmpty = step.tool === "" || step.tool == null;
+        const isFinalStep = completeMode || (processingPositionIsEmpty && toolIsEmpty);
+
+        const positions = SanskritSmith.getTargetPositions(step, targetArea.targetBoxRefs.length);
+        if (!positions.length) {
             isAnimating = false;
             if (onComplete) onComplete();
-        };
-        replacementFade.call(finishReplacement);
-        window.setTimeout(finishReplacement, 850);
-    };
+            return;
+        }
 
-    if (!remaining) {
-        finishCollapse();
-        return;
+        const firstPosition = positions[0];
+        const firstSlotCenterX = SanskritSmith.getTargetSlotCenterX(
+            firstPosition,
+            targetArea.letterStartX,
+            targetArea.letterWidth,
+            targetArea.letterGap
+        );
+        const centerY = targetArea.letterY + targetArea.letterHeight / 2;
+        const collapseTargets = [];
+
+        positions.forEach(position => {
+            const slotX = targetArea.letterStartX + (position - 1) * (targetArea.letterWidth + targetArea.letterGap);
+            const textRef = targetArea.targetTextRefs[position - 1];
+            const box = targetArea.targetBoxRefs[position - 1];
+            if (textRef) {
+                [textRef.textOutline, textRef.textFill].forEach(text => {
+                    createjs.Tween.removeTweens(text);
+                    text.x = slotX + targetArea.letterWidth / 2;
+                    text.y = centerY;
+                    text.scaleX = 1;
+                    text.scaleY = 1;
+                    text.alpha = 1;
+                    text.visible = true;
+                    collapseTargets.push(text);
+                });
+            }
+            if (box) {
+                createjs.Tween.removeTweens(box);
+                box.alpha = 1;
+                box.visible = false;
+            }
+        });
+
+        let remaining = collapseTargets.length;
+        let finished = false;
+        // Remove collapsed text and create the merged replacement.
+        const finishCollapse = () => {
+            if (finished) return;
+            finished = true;
+            console.log("[targetConjunct] all collapse tweens finished", {
+                targetConjunct: step.targetConjunct,
+                replacementPosition: firstPosition
+            });
+            collapseTargets.forEach(target => {
+                createjs.Tween.removeTweens(target);
+                target.visible = false;
+                stage.removeChild(target);
+            });
+            // Clear every collapsed slot's text ref so a later step cannot
+            // make stale letters visible again when it resets tween state.
+            positions.forEach(position => {
+                targetArea.targetTextRefs[position - 1] = null;
+            });
+
+            const replacementX = isFinalStep
+                ? targetBarX + targetBarWidth / 2
+                : SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap);
+            const replacementFontSize = isFinalStep ? 60 : 50;
+            const replacementText = addOutlinedText(
+                step.targetConjunct || "",
+                `bold ${replacementFontSize}px Arial`,
+                replacementX,
+                centerY
+            );
+            targetArea.targetTextRefs[firstPosition - 1] = replacementText;
+            const replacementParts = [replacementText.textOutline, replacementText.textFill];
+            replacementParts.forEach(text => { text.alpha = 0; });
+            stage.update();
+            const replacementFade = createjs.Tween.get(replacementParts[0])
+                .to({alpha: 1}, 800);
+            replacementFade.on("change", () => stage.update());
+            const replacementFillFade = createjs.Tween.get(replacementParts[1])
+                .to({alpha: 1}, 800);
+            replacementFillFade.on("change", () => stage.update());
+            if (isFinalStep) {
+                let displayFinished = false;
+                // Release the animator after the final result has been shown.
+                const finishDisplay = () => {
+                    if (displayFinished) return;
+                    displayFinished = true;
+                    window.setTimeout(() => {
+                        isAnimating = false;
+                        stage.update();
+                        if (onComplete) onComplete();
+                    }, 1000);
+                };
+                replacementFade.call(finishDisplay);
+                window.setTimeout(finishDisplay, 850);
+                return;
+            }
+            console.log("[targetConjunct] replacement created", {
+                text: replacementText.textFill.text,
+                x: replacementText.textFill.x,
+                y: replacementText.textFill.y,
+                visible: replacementText.textFill.visible,
+                stageChildCount: stage.numChildren
+            });
+            let replacementFinished = false;
+            // Release the animator after the intermediate result has appeared.
+            const finishReplacement = () => {
+                if (replacementFinished) return;
+                replacementFinished = true;
+                isAnimating = false;
+                if (onComplete) onComplete();
+            };
+            replacementFade.call(finishReplacement);
+            window.setTimeout(finishReplacement, 850);
+        };
+
+        if (!remaining) {
+            finishCollapse();
+            return;
+        }
+
+        collapseTargets.forEach(target => {
+            createjs.Tween.get(target)
+                .to({x: firstSlotCenterX, y: centerY}, 400)
+                .to({alpha: 0}, 300)
+                .on("change", () => stage.update())
+                .call(() => {
+                    remaining -= 1;
+                    console.log("[targetConjunct] collapse tween completed", {
+                        remaining,
+                        total: collapseTargets.length
+                    });
+                    if (remaining === 0) finishCollapse();
+                });
+        });
+
+        // Keep the replacement from depending exclusively on CreateJS
+        // completion callbacks: the collapse visuals can finish even when a
+        // callback is missed (for example, after another tween was removed).
+        window.setTimeout(() => {
+            if (!finished) {
+                console.warn("[targetConjunct] using timed completion fallback", {
+                    remaining,
+                    targetConjunct: step.targetConjunct
+                });
+                finishCollapse();
+            }
+        }, 800);
     }
 
-    collapseTargets.forEach(target => {
-        createjs.Tween.get(target)
-            .to({x: centerX, y: centerY}, 400)
-            .to({alpha: 0}, 300)
-            .on("change", () => stage.update())
-            .call(() => {
-                remaining -= 1;
-                console.log("[targetConjunct] collapse tween completed", {
-                    remaining,
-                    total: collapseTargets.length
-                });
-                if (remaining === 0) finishCollapse();
-            });
-    });
-
-    // Keep the replacement from depending exclusively on CreateJS
-    // completion callbacks: the collapse visuals can finish even when a
-    // callback is missed (for example, after another tween was removed).
-    window.setTimeout(() => {
-        if (!finished) {
-            console.warn("[targetConjunct] using timed completion fallback", {
-                remaining,
-                targetConjunct: step.targetConjunct
-            });
-            finishCollapse();
-        }
-    }, 800);
-}
-
     return {
+        // Merge a regular processing step's target positions.
         animateTargetPositionsToConjunct(step, onComplete) {
             animateConjunctPositions(step, onComplete, false);
         },
+        // Play the final target-bar merge before completing the word.
         animateCompleteConjunct(step, onComplete) {
             window.setTimeout(() => {
                 animateConjunctPositions(step, onComplete, true);
             }, 500);
         },
+        // Allow a new target-bar animation after a level or word reset.
         reset() {
             isAnimating = false;
         }
     };
 };
 
+/** Builds the shared movement logic and individual tool animations. */
 SanskritSmith.createLetterProcessor = ({
     stage,
     createjs,
@@ -293,6 +308,7 @@ SanskritSmith.createLetterProcessor = ({
     defaultHiddenRightRatio
 }) => {
     const {firstLetter, secondLetter, firstMask: firstLetterMask, secondMask: secondLetterMask} = letterParts;
+    // Guarantee that an animation advances once, even if its tween callback is missed.
     const continueOnce = (tween, fallbackDelay, callback, stageName) => {
         let continued = false;
         const continueAnimation = () => {
@@ -308,11 +324,26 @@ SanskritSmith.createLetterProcessor = ({
             }
         }, fallbackDelay);
     };
+    // Convert the scissors parameter to a clamped vertical or horizontal cut line.
     const getRightCutPositionRatio = hiddenRightRatio =>
         Math.max(0, Math.min(1, 0.5 + hiddenRightRatio));
+    // Convert the scissors parameter to a clamped horizontal cut line.
     const getBottomCutPositionRatio = hiddenBottomRatio =>
         Math.max(0, Math.min(1, 0.5 + hiddenBottomRatio));
 
+    // Provide a brief fallback animation for tools without a dedicated handler.
+    const genericToolAnimation = () => {
+        const animation = createjs.Tween.get(letterParts.singleLetter)
+            .to({alpha: 0, scaleX: 1.15, scaleY: 1.15}, 180)
+            .to({alpha: 1, scaleX: 1, scaleY: 1}, 180);
+        continueOnce(animation, 420, () => {
+            stage.update();
+            animateProcessedLetterToTarget();
+        }, "toolAnimation");
+        return animation;
+    };
+
+    // Lift, resize, and move a processed letter into its target slot.
     const animateProcessedLetterToTarget = (
         hiddenRightRatio = 0,
         hiddenBottomRatio = 0,
@@ -323,6 +354,7 @@ SanskritSmith.createLetterProcessor = ({
             ? [scissorsCutLines]
             : [];
         const movingParts = [...visual.letters, ...visual.masks, ...auxiliaryLines];
+        // Move all visual parts to the target slot, then start the merge.
         const moveAndFadeToProcessingPosition = () => {
             const step = getCurrentStep();
             const targetBox = step?.processingPosition
@@ -338,6 +370,7 @@ SanskritSmith.createLetterProcessor = ({
             const moveX = targetCenterX - currentVisualCenterX;
             const moveY = targetCenterY - currentVisualCenterY;
             let flightFinished = false;
+            // Hide the temporary processing visual and continue the step.
             const finishFlight = () => {
                 if (flightFinished) return;
                 flightFinished = true;
@@ -375,14 +408,17 @@ SanskritSmith.createLetterProcessor = ({
             continueOnce(firstFlight, 550, finishFlight, "flight");
         };
 
+        // Scale the letter around the appropriate cut boundary or center.
         const shrinkToTargetSize = () => {
             const targetScaleX = letterWidth / processingLetterSize;
             const targetScaleY = letterHeight / processingLetterSize;
+            // Apply the common target-size scale animation to one display object.
             const scaleLetter = letter => createjs.Tween.get(letter, {override: true})
                 .to({scaleX: targetScaleX, scaleY: targetScaleY}, 400)
                 .on("change", () => stage.update());
 
             if (visual.shrinkMode === "cut") {
+                // Keep the cut edge fixed while shrinking an axe-split piece.
                 const shrinkAtBoundary = (letter, boundaryX) => {
                     letter.regX = boundaryX - letter.x;
                     letter.x = boundaryX;
@@ -430,6 +466,7 @@ SanskritSmith.createLetterProcessor = ({
         continueOnce(finishLift, 450, shrinkToTargetSize, "lift");
     };
 
+    // Split the processing letter and move the right portion out of view.
     const axeSplit = hiddenRightRatio => {
         const visibleLeftRatio = getRightCutPositionRatio(hiddenRightRatio);
         const hiddenRightWidthRatio = 1 - visibleLeftRatio;
@@ -464,6 +501,7 @@ SanskritSmith.createLetterProcessor = ({
         return splitTween;
     };
 
+    // Mask the selected right and bottom regions before moving the trimmed letter.
     const scissorsTrim = (hiddenRightRatio, hiddenBottomRatio) => {
         const trimMask = letterParts.secondMask;
         createjs.Tween.removeTweens(trimMask);
@@ -491,17 +529,7 @@ SanskritSmith.createLetterProcessor = ({
         return animation;
     };
 
-    const genericToolAnimation = () => {
-        const animation = createjs.Tween.get(letterParts.singleLetter)
-            .to({alpha: 0, scaleX: 1.15, scaleY: 1.15}, 180)
-            .to({alpha: 1, scaleX: 1, scaleY: 1}, 180);
-        continueOnce(animation, 420, () => {
-            stage.update();
-            animateProcessedLetterToTarget();
-        }, "toolAnimation");
-        return animation;
-    };
-
+    // Add a halant form and advance to the following processing step.
     const gemHalant = params => {
         const withHalant = typeof params.withHalant === "string" ? params.withHalant : "";
         if (!withHalant) return genericToolAnimation();
@@ -533,6 +561,7 @@ SanskritSmith.createLetterProcessor = ({
         return animation;
     };
 
+    // Pull the following target-bar letter into the processing letter.
     const hookJoin = () => {
         const step = getCurrentStep();
         const position = Number(step?.processingPosition);
@@ -574,6 +603,7 @@ SanskritSmith.createLetterProcessor = ({
         return animation;
     };
 
+    // Shrink and overlap two letters, shatter them, then reveal their conjunct.
     const hammerReforge = () => {
         const step = getCurrentStep();
         const position = Number(step?.processingPosition);
@@ -596,6 +626,7 @@ SanskritSmith.createLetterProcessor = ({
         letter.y = letterY;
         letter.regX = letter.regY = 0;
 
+        // Fetch the following character and move it over the processing letter.
         const startIncomingLetter = () => {
             const followingText = getTargetLetter(followingPosition);
             if (!followingText) {
@@ -616,6 +647,7 @@ SanskritSmith.createLetterProcessor = ({
             stage.addChild(incomingLetter);
             stage.update();
 
+            // Replace both letters with shards, then reveal the re-forged conjunct.
             const startSmash = () => {
                 const shardCount = 15 + Math.floor(Math.random() * 6);
                 const shards = [];
@@ -661,6 +693,7 @@ SanskritSmith.createLetterProcessor = ({
                 stage.removeChild(incomingLetter);
                 stage.update();
 
+                // Show the new conjunct once the shard animation has completed.
                 const finishShards = () => {
                     shards.forEach(shard => stage.removeChild(shard));
                     letterParts.setText(step.targetConjunct || sourceText);
@@ -696,6 +729,7 @@ SanskritSmith.createLetterProcessor = ({
         return shrinkAnimation;
     };
 
+    // Map animation names to the corresponding tool-specific implementation.
     const handlers = {
         axeSplit: params => {
             const value = Number(params.hiddenRightRatio);
@@ -705,6 +739,7 @@ SanskritSmith.createLetterProcessor = ({
             return axeSplit(ratio);
         },
         scissorsTrim: params => {
+            // Use configured ratios when valid, otherwise use the default cut.
             const validRatio = (value, fallback) => {
                 const ratio = Number(value);
                 return Number.isFinite(ratio) && ratio > 0 && ratio < 1 ? ratio : fallback;
@@ -720,6 +755,7 @@ SanskritSmith.createLetterProcessor = ({
     };
 
     return {
+        // Set the required visual mode and run the selected animation.
         run(animationName, params = {}) {
             letterParts.setMode(animationName === "axeSplit" ? "axe" : animationName === "scissorsTrim" ? "trim" : "single");
             return (handlers[animationName] || genericToolAnimation)(params);
