@@ -132,10 +132,8 @@ frame.on("ready", () => {
             const letterFont = "bold 250px 'Noto Sans Devanagari', 'Nirmala UI', Arial";
             const hiddenRightRatio = 0.45;
 
-            const processingPosition = currentWord.targetSlots[stepIndex].processingPosition;
             const initialStep = currentWord.targetSlots[stepIndex];
-            const processingText = initialStep.processingLetter
-                || (processingPosition === "" ? "" : currentWord.letters[Number(processingPosition) - 1]);
+            const processingText = getProcessingLetterText(currentWord, initialStep);
             const processingLetter = new createjs.Text(processingText, letterFont, "#FFFFFF");
             processingLetterRef = processingLetter;
             processingLetterBoxRef = processingLetterBox;
@@ -165,7 +163,11 @@ frame.on("ready", () => {
                 });
             };
             const getPartsMode = step => step?.tool?.toLowerCase() === "axe" ? "axe" : "single";
-            processingParts.reset(processingLetter.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
+            processingParts.reset(
+                processingLetter.text,
+                hasProcessingPosition(currentWord.targetSlots[stepIndex]),
+                getPartsMode(currentWord.targetSlots[stepIndex])
+            );
 
             const finishWordWithPopup = () => {
                 const scoreSettings = SanskritSmith.SCORE_SETTINGS;
@@ -209,7 +211,7 @@ frame.on("ready", () => {
 
                 processingParts.reset(
                     processingLetterRef.text,
-                    nextStep.processingPosition !== "",
+                    hasProcessingPosition(nextStep),
                     getPartsMode(nextStep)
                 );
                 updateProcessingLetter(processingParts, processingLetterRef);
@@ -254,7 +256,7 @@ frame.on("ready", () => {
 
                 processingParts.reset(
                     processingLetterRef.text,
-                    true,
+                    hasProcessingPosition(currentWord.targetSlots[stepIndex]),
                     getPartsMode(currentWord.targetSlots[stepIndex])
                 );
                 updateProcessingLetter(processingParts, processingLetterRef);
@@ -284,7 +286,11 @@ frame.on("ready", () => {
                 targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
                 gameUI.updateCampaignStatus();
                 toolArea.updateForLevel();
-                processingParts.reset(processingLetterRef.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
+                processingParts.reset(
+                    processingLetterRef.text,
+                    hasProcessingPosition(currentWord.targetSlots[stepIndex]),
+                    getPartsMode(currentWord.targetSlots[stepIndex])
+                );
                 updateProcessingLetter(processingParts, processingLetterRef);
                 stage.update();
                 return true;
@@ -343,7 +349,7 @@ frame.on("ready", () => {
                 const isAxe = toolName === "axe";
                 const isScissors = toolName === "scissors";
                 const rule = isAxe || isScissors
-                    ? (characterRules[processingLetter.text]?.tools || []).find(candidate =>
+                    ? (characterRules[step?.base]?.tools || []).find(candidate =>
                         candidate.tool?.toLowerCase() === toolName
                     )
                     : null;
@@ -382,7 +388,15 @@ frame.on("ready", () => {
             };
             triggerToolAnimation = toolName => {
                 const step = currentWord.targetSlots[stepIndex];
-                const rulesForLetter = characterRules[processingLetter.text]?.tools || [];
+                const base = step?.base;
+                if (typeof base === "string" && base && processingLetter.text !== base) {
+                    processingLetter.text = base;
+                    processingParts.setText(base);
+                    if (updateScissorsCutLines) updateScissorsCutLines();
+                    stage.update();
+                }
+
+                const rulesForLetter = characterRules[step?.base]?.tools || [];
                 const rule = rulesForLetter.find(candidate =>
                     candidate.tool
                     && step?.tool
@@ -393,7 +407,7 @@ frame.on("ready", () => {
                     && toolName.toLowerCase() === "hammer";
                 if (!rule && !isLevelHammerStep) {
                     console.warn("[characterRules] no matching rule; using generic animation", {
-                        character: processingLetter.text,
+                        base: step?.base,
                         requiredTool: step && step.tool,
                         draggedTool: toolName
                     });
@@ -436,14 +450,26 @@ frame.on("ready", () => {
 
         function updateProcessingLetter(letterParts, processingLetter) {
             const step = currentWord.targetSlots[stepIndex];
-            const position = step && step.processingPosition;
-            const text = step?.processingLetter
-                || (position === "" || position === undefined
-                    ? ""
-                    : currentWord.letters[Number(position) - 1]);
+            const text = getProcessingLetterText(currentWord, step);
             processingLetter.text = text;
             letterParts.setText(text);
             if (updateScissorsCutLines) updateScissorsCutLines();
+        }
+
+        function getProcessingLetterText(word, step) {
+            if (!word || !step) return "";
+            if (step.processingPosition === "" || step.processingPosition == null) return "";
+            const position = Number(step.processingPosition);
+            if (!Number.isInteger(position) || position < 1) return "";
+            return word.letters[position - 1] || "";
+        }
+
+        function hasProcessingPosition(step) {
+            if (!step || step.processingPosition === "" || step.processingPosition == null) return false;
+            const position = Number(step.processingPosition);
+            return Number.isInteger(position)
+                && position >= 1
+                && position <= (currentWord?.letters?.length || 0);
         }
 
         const toolArea = SanskritSmith.createToolArea({

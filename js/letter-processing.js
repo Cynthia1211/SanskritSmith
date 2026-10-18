@@ -81,6 +81,8 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
             });
             firstLetter.regX = firstLetter.regY = 0;
             secondLetter.regX = secondLetter.regY = 0;
+            firstMask.regX = firstMask.regY = 0;
+            secondMask.regX = secondMask.regY = 0;
             firstLetter.x = secondLetter.x = box.x + size / 2;
             firstLetter.y = secondLetter.y = box.y + size / 2;
             firstMask.x = secondMask.x = box.x;
@@ -580,8 +582,124 @@ SanskritSmith.createLetterProcessor = ({
             letterParts.setText(step.targetConjunct || letter.text);
             letter.alpha = 1;
             stage.update();
-            animateProcessedLetterToTarget(0.5, 0.5);
+            animateProcessedLetterToTarget(0, 0);
         }, "hookJoin");
+        return animation;
+    };
+
+    // Pull the following target-bar letter into the processing letter for repha.
+    const hookRepha = () => {
+        const step = getCurrentStep();
+        const position = Number(step?.processingPosition);
+        const followingPosition = position + 1;
+        const followingBox = getTargetBox(followingPosition);
+        const followingText = getTargetLetter(followingPosition);
+        if (!Number.isInteger(position) || !followingBox || !followingText) {
+            return genericToolAnimation();
+        }
+
+        removeTargetText(followingPosition);
+
+        const letter = letterParts.singleLetter;
+        const originalLetterY = letter.y;
+        const originalScaleX = letter.scaleX;
+        const originalScaleY = letter.scaleY;
+        const incomingLetter = new createjs.Text(followingText, letter.font, letter.color);
+        incomingLetter.textAlign = "center";
+        incomingLetter.textBaseline = "middle";
+        incomingLetter.x = followingBox.x + letterWidth / 2;
+        incomingLetter.y = followingBox.y + letterHeight / 2;
+        incomingLetter.scaleX = letterWidth / processingLetterSize;
+        incomingLetter.scaleY = letterHeight / processingLetterSize;
+        stage.addChild(incomingLetter);
+
+        createjs.Tween.get(letter)
+            .to({
+                y: originalLetterY - processingLetterSize * 0.25,
+                scaleX: originalScaleX * letterWidth / processingLetterSize,
+                scaleY: originalScaleY * letterHeight / processingLetterSize,
+                alpha: 0
+            }, 500)
+            .on("change", () => stage.update());
+        const animation = createjs.Tween.get(incomingLetter)
+            .to({
+                x: letter.x,
+                y: letter.y,
+                scaleX: 1,
+                scaleY: 1,
+                alpha: 0
+            }, 500)
+            .on("change", () => stage.update());
+        continueOnce(animation, 550, () => {
+            stage.removeChild(incomingLetter);
+            letterParts.setText(step.targetConjunct || letter.text);
+            letter.y = originalLetterY;
+            letter.scaleX = originalScaleX;
+            letter.scaleY = originalScaleY;
+            letter.alpha = 1;
+            stage.update();
+            createjs.Tween.get(letter)
+                .wait(500)
+                .call(() => animateProcessedLetterToTarget(0, 0));
+        }, "hookRepha");
+        return animation;
+    };
+
+    // Pull the following target-bar letter into the processing letter for rakaar.
+    const hookRakaar = () => {
+        const step = getCurrentStep();
+        const position = Number(step?.processingPosition);
+        const followingPosition = position + 1;
+        const followingBox = getTargetBox(followingPosition);
+        const followingText = getTargetLetter(followingPosition);
+        if (!Number.isInteger(position) || !followingBox || !followingText) {
+            return genericToolAnimation();
+        }
+
+        removeTargetText(followingPosition);
+
+        const letter = letterParts.singleLetter;
+        const originalLetterY = letter.y;
+        const originalScaleX = letter.scaleX;
+        const originalScaleY = letter.scaleY;
+        const incomingLetter = new createjs.Text(followingText, letter.font, letter.color);
+        incomingLetter.textAlign = "center";
+        incomingLetter.textBaseline = "middle";
+        incomingLetter.x = followingBox.x + letterWidth / 2;
+        incomingLetter.y = followingBox.y + letterHeight / 2;
+        incomingLetter.scaleX = letterWidth / processingLetterSize;
+        incomingLetter.scaleY = letterHeight / processingLetterSize;
+        stage.addChild(incomingLetter);
+
+        createjs.Tween.get(letter)
+            .to({
+                y: originalLetterY + processingLetterSize * 0.05,
+                scaleX: originalScaleX * letterWidth / processingLetterSize,
+                scaleY: originalScaleY * letterHeight / processingLetterSize,
+                alpha: 0
+            }, 500)
+            .on("change", () => stage.update());
+        const animation = createjs.Tween.get(incomingLetter)
+            .to({
+                x: letter.x,
+                y: letter.y,
+                scaleX: 1,
+                scaleY: 1,
+                alpha: 0
+            }, 500)
+            .on("change", () => stage.update());
+        continueOnce(animation, 550, () => {
+            stage.removeChild(incomingLetter);
+            letterParts.setText(step.targetConjunct || letter.text);
+            letter.y = originalLetterY;
+            letter.scaleX = originalScaleX;
+            letter.scaleY = originalScaleY;
+            letter.alpha = 1;
+            stage.update();
+            createjs.Tween.get(letter)
+                .wait(500)
+                .call(() => animateProcessedLetterToTarget(0, 0));
+        }, "hookRakaar");
         return animation;
     };
 
@@ -690,7 +808,7 @@ SanskritSmith.createLetterProcessor = ({
                         .to({alpha: 1, scaleX: 1, scaleY: 1}, 500, createjs.Ease.backOut);
                     targetFade.on("change", () => stage.update());
                     continueOnce(targetFade, 550, () => {
-                        animateProcessedLetterToTarget(0.5, 0.5);
+                        animateProcessedLetterToTarget(0, 0);
                     }, "hammerReforgeTargetFade");
                 };
                 continueOnce(firstShardTween, 1200, finishShards, "hammerReforgeShatter");
@@ -733,6 +851,8 @@ SanskritSmith.createLetterProcessor = ({
         },
         gemHalant,
         hookJoin,
+        hookRepha,
+        hookRakaar,
         hammerReforge
     };
 
