@@ -18,12 +18,12 @@ Configure the available tools, animations, and animation parameters for each let
 
 ### Intermediate Processing States: steps in `levels.json`
 
-Each word defines its processing steps in `targetSlots`. `processingPosition` identifies the source letter position, and `processingLetter` specifies the letter shown in the processing area for that step. When `processingLetter` is empty, the game reads the letter from the word's `letters` array using `processingPosition`; when set, the specified intermediate letter is used. Set `toolAnimation` to choose an animation for the step. If it is empty, the game uses the animation matching the letter and tool in `charactersRules.json`.
+Each word defines its processing steps in `targetSlots`. `processingPosition` identifies the source letter position and determines which character appears in the processing area. `base` specifies the character form used for the operation; when it differs from the displayed character, the game changes the processing character to `base` before running the tool. Set `toolAnimation` to choose an animation for the step. If it is empty, the game uses the animation matching `base` and `tool` in `charactersRules.json`.
 
-For example, after the gem transforms `ट` into `ट्`, the next step can set `processingLetter` to `ट्` and use `toolAnimation` to specify how it is processed next:
+For example, a step can read the character from position 1, change it to its base form, and use a hook animation:
 
 ```json
-{ "step": 1, "processingPosition": "1", "processingLetter": "ट्", "tool": "hook",
+{ "step": 0, "processingPosition": "1", "base": "ट्", "tool": "hook",
   "toolAnimation": "hookJoin", "targetPositions": ["1", "2"], "targetConjunct": "ट्ठ" }
 ```
 
@@ -32,7 +32,7 @@ For example, after the gem transforms `ट` into `ट्`, the next step can set
 Some transformations do not have a regular letter rule in `charactersRules.json`. Configure these directly in a `levels.json` step by setting `tool` to `"hammer"`. The game recognizes this as a step-level special transformation, so no matching character rule is required. Provide `targetPositions` and `targetConjunct` for the result.
 
 ```json
-{ "step": 0, "processingPosition": "1", "processingLetter": "", "tool": "hammer",
+{ "step": 0, "processingPosition": "1", "base": "क्ष", "tool": "hammer",
   "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "क्ष" }
 ```
 

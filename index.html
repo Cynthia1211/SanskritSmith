@@ -19,8 +19,8 @@
 // Define the Frame using the current ZIM syntax.
 const frame = new Frame({
     scaling: "fit",
-    width: 1200,
-    height: 700,
+    width: SanskritSmith.DESIGN_SIZE.width,
+    height: SanskritSmith.DESIGN_SIZE.height,
     color: "#555555",
     outerColor: "#333333",
     assets: [
@@ -30,7 +30,6 @@ const frame = new Frame({
         "game/targetBackground.png",
         "tools/toolBackground.png",
         "tools/axe.png",
-        "tools/gem.png",
         "tools/hammer.png",
         "tools/hook.png",
         "tools/scissors.png"
@@ -92,12 +91,12 @@ frame.on("ready", () => {
 
         const layout = SanskritSmith.calculateGameLayout(frame, targetBarImage);
         const {
-            targetBarX, targetBarY, targetBarWidth, targetBarHeight,
+            targetBarX, targetBarWidth,
             toolsAreaX, toolsAreaWidth
         } = layout;
 
-        const addOutlinedText = (text, font, x, y) =>
-            SanskritSmith.addOutlinedText(stage, text, font, x, y);
+        const addOutlinedText = (text, font, x, y, lineWidth) =>
+            SanskritSmith.addOutlinedText(stage, text, font, x, y, lineWidth, 3 * layout.uiScale);
 
         // Preserve the background aspect ratio and crop from the center to avoid distortion.
         const background = new Pic("game/background.jpeg")
@@ -112,11 +111,11 @@ frame.on("ready", () => {
         stage.addChildAt(forgingStation, 1);
         forgingStation.image.onload = () => {
             // Scale the image and align it horizontally and with the bottom edge of the canvas.
-            forgingStation.scaleX = 0.6;
-            forgingStation.scaleY = 0.6;
+            forgingStation.scaleX = 0.6 * layout.uiScale;
+            forgingStation.scaleY = 0.6 * layout.uiScale;
             const forgingStationDisplayWidth = forgingStation.image.width * forgingStation.scaleX;
             forgingStation.x = toolsAreaX + toolsAreaWidth / 2 - forgingStationDisplayWidth / 2;
-            forgingStation.y = frame.height - forgingStation.image.height * 0.45;
+            forgingStation.y = frame.height - forgingStation.image.height * 0.45 * layout.uiScale;
 
             // Position the processing letter above the forging station.
             const processingLetterSize = forgingStationDisplayWidth * 0.8;
@@ -129,13 +128,12 @@ frame.on("ready", () => {
             processingLetterBox.y = forgingStation.y - processingLetterSize * 0.62;
 
             // Keep the character still and hide a configurable part on the right.
-            const letterFont = "bold 250px 'Noto Sans Devanagari', 'Nirmala UI', Arial";
+            const letterFontSize = 250 * layout.uiScale;
+            const letterFont = `bold ${letterFontSize}px 'Noto Sans Devanagari', 'Nirmala UI', Arial`;
             const hiddenRightRatio = 0.45;
 
-            const processingPosition = currentWord.targetSlots[stepIndex].processingPosition;
             const initialStep = currentWord.targetSlots[stepIndex];
-            const processingText = initialStep.processingLetter
-                || (processingPosition === "" ? "" : currentWord.letters[Number(processingPosition) - 1]);
+            const processingText = SanskritSmith.getProcessingLetterText(currentWord, initialStep);
             const processingLetter = new createjs.Text(processingText, letterFont, "#FFFFFF");
             processingLetterRef = processingLetter;
             processingLetterBoxRef = processingLetterBox;
@@ -156,16 +154,20 @@ frame.on("ready", () => {
                     const homeY = part.y;
                     createjs.Tween.removeTweens(part);
                     createjs.Tween.get(part, {override: true})
-                        .to({x: homeX + 8}, 50)
-                        .to({x: homeX - 8}, 50)
-                        .to({x: homeX + 5}, 50)
-                        .to({x: homeX - 5}, 50)
+                        .to({x: homeX + 8 * layout.uiScale}, 50)
+                        .to({x: homeX - 8 * layout.uiScale}, 50)
+                        .to({x: homeX + 5 * layout.uiScale}, 50)
+                        .to({x: homeX - 5 * layout.uiScale}, 50)
                         .to({x: homeX, y: homeY}, 50)
                         .on("change", () => stage.update());
                 });
             };
             const getPartsMode = step => step?.tool?.toLowerCase() === "axe" ? "axe" : "single";
-            processingParts.reset(processingLetter.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
+            processingParts.reset(
+                processingLetter.text,
+                SanskritSmith.hasProcessingPosition(currentWord.targetSlots[stepIndex], currentWord),
+                getPartsMode(currentWord.targetSlots[stepIndex])
+            );
 
             const finishWordWithPopup = () => {
                 const scoreSettings = SanskritSmith.SCORE_SETTINGS;
@@ -201,7 +203,9 @@ frame.on("ready", () => {
                 const noTool = nextStep.tool === "" || nextStep.tool == null;
                 if (noProcessingPosition && noTool) {
                     processingParts.hide();
-                    updateProcessingLetter(processingParts, processingLetterRef);
+                    SanskritSmith.updateProcessingLetter(
+                        processingParts, processingLetterRef, currentWord, nextStep, updateScissorsCutLines
+                    );
                     stage.update();
                     targetAnimator.animateCompleteConjunct(nextStep, finishWordWithPopup);
                     return;
@@ -209,10 +213,12 @@ frame.on("ready", () => {
 
                 processingParts.reset(
                     processingLetterRef.text,
-                    nextStep.processingPosition !== "",
+                    SanskritSmith.hasProcessingPosition(nextStep, currentWord),
                     getPartsMode(nextStep)
                 );
-                updateProcessingLetter(processingParts, processingLetterRef);
+                SanskritSmith.updateProcessingLetter(
+                    processingParts, processingLetterRef, currentWord, nextStep, updateScissorsCutLines
+                );
                 stage.update();
             };
 
@@ -254,10 +260,13 @@ frame.on("ready", () => {
 
                 processingParts.reset(
                     processingLetterRef.text,
-                    true,
+                    SanskritSmith.hasProcessingPosition(currentWord.targetSlots[stepIndex], currentWord),
                     getPartsMode(currentWord.targetSlots[stepIndex])
                 );
-                updateProcessingLetter(processingParts, processingLetterRef);
+                SanskritSmith.updateProcessingLetter(
+                    processingParts, processingLetterRef, currentWord,
+                    currentWord.targetSlots[stepIndex], updateScissorsCutLines
+                );
                 stage.update();
                 console.info("[campaign] started next word", {
                     level: level.id,
@@ -284,8 +293,15 @@ frame.on("ready", () => {
                 targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
                 gameUI.updateCampaignStatus();
                 toolArea.updateForLevel();
-                processingParts.reset(processingLetterRef.text, true, getPartsMode(currentWord.targetSlots[stepIndex]));
-                updateProcessingLetter(processingParts, processingLetterRef);
+                processingParts.reset(
+                    processingLetterRef.text,
+                    SanskritSmith.hasProcessingPosition(currentWord.targetSlots[stepIndex], currentWord),
+                    getPartsMode(currentWord.targetSlots[stepIndex])
+                );
+                SanskritSmith.updateProcessingLetter(
+                    processingParts, processingLetterRef, currentWord,
+                    currentWord.targetSlots[stepIndex], updateScissorsCutLines
+                );
                 stage.update();
                 return true;
             };
@@ -299,7 +315,7 @@ frame.on("ready", () => {
             const processingLetterBorder = new createjs.Shape();
             processingLetterBorder.mouseEnabled = false;
             processingLetterBorder.graphics
-                .setStrokeStyle(3)
+                .setStrokeStyle(3 * layout.uiScale)
                 .beginStroke("#FFFFFF")
                 .drawRect(0, 0, processingLetterSize, processingLetterSize);
             processingLetterBorder.x = processingLetterBox.x;
@@ -336,12 +352,17 @@ frame.on("ready", () => {
                 advanceToNextStep: () => advanceToNextProcessingStep(),
                 defaultHiddenRightRatio: hiddenRightRatio
             });
-            const showScissorsCutLines = false;
+            // DEBUG ONLY: Keep the cut-line renderer below for future debugging; do not delete it.
+            /*
+            const showScissorsCutLines = true;
             updateScissorsCutLines = () => {
                 const step = currentWord.targetSlots[stepIndex];
-                const rule = step?.tool?.toLowerCase() === "scissors"
-                    ? (characterRules[processingLetter.text]?.tools || []).find(candidate =>
-                        candidate.tool?.toLowerCase() === "scissors"
+                const toolName = step?.tool?.toLowerCase();
+                const isAxe = toolName === "axe";
+                const isScissors = toolName === "scissors";
+                const rule = isAxe || isScissors
+                    ? (characterRules[step?.base]?.tools || []).find(candidate =>
+                        candidate.tool?.toLowerCase() === toolName
                     )
                     : null;
                 if (!rule) {
@@ -354,8 +375,9 @@ frame.on("ready", () => {
                 const params = rule.toolParams || {};
                 const rightRatio = Number(params.hiddenRightRatio);
                 const bottomRatio = Number(params.hiddenBottomRatio);
-                const rightCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(rightRatio) ? rightRatio : 0.45)));
-                const bottomCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(bottomRatio) ? bottomRatio : 0.45)));
+                const rightCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(rightRatio) ? rightRatio : hiddenRightRatio)));
+                const effectiveBottomRatio = isAxe ? -0.5 : Number.isFinite(bottomRatio) ? bottomRatio : 0.45;
+                const bottomCutRatio = Math.max(0, Math.min(1, 0.5 + effectiveBottomRatio));
                 const cutX = processingLetterBox.x + processingLetterSize * rightCutRatio;
                 const cutY = processingLetterBox.y + processingLetterSize * bottomCutRatio;
                 scissorsCutLines.x = scissorsCutLines.y = 0;
@@ -363,18 +385,31 @@ frame.on("ready", () => {
                 scissorsCutLines.scaleX = scissorsCutLines.scaleY = 1;
                 scissorsCutLines.alpha = 1;
                 scissorsCutLines.graphics.clear()
-                    .setStrokeStyle(4)
+                    .setStrokeStyle(2 * layout.uiScale)
+                    .setStrokeDash([6 * layout.uiScale, 5 * layout.uiScale], 0)
                     .beginStroke("#ff0000")
                     .moveTo(cutX, processingLetterBox.y)
-                    .lineTo(cutX, processingLetterBox.y + processingLetterSize)
-                    .moveTo(processingLetterBox.x, cutY)
-                    .lineTo(processingLetterBox.x + processingLetterSize, cutY);
+                    .lineTo(cutX, processingLetterBox.y + processingLetterSize);
+                if (isAxe || isScissors) {
+                    scissorsCutLines.graphics
+                        .moveTo(processingLetterBox.x, cutY)
+                        .lineTo(processingLetterBox.x + processingLetterSize, cutY);
+                }
                 scissorsCutLines.visible = showScissorsCutLines;
                 stage.update();
             };
+            */
             triggerToolAnimation = toolName => {
                 const step = currentWord.targetSlots[stepIndex];
-                const rulesForLetter = characterRules[processingLetter.text]?.tools || [];
+                const base = step?.base;
+                if (typeof base === "string" && base && processingLetter.text !== base) {
+                    processingLetter.text = base;
+                    processingParts.setText(base);
+                    if (updateScissorsCutLines) updateScissorsCutLines();
+                    stage.update();
+                }
+
+                const rulesForLetter = characterRules[step?.base]?.tools || [];
                 const rule = rulesForLetter.find(candidate =>
                     candidate.tool
                     && step?.tool
@@ -385,7 +420,7 @@ frame.on("ready", () => {
                     && toolName.toLowerCase() === "hammer";
                 if (!rule && !isLevelHammerStep) {
                     console.warn("[characterRules] no matching rule; using generic animation", {
-                        character: processingLetter.text,
+                        base: step?.base,
                         requiredTool: step && step.tool,
                         draggedTool: toolName
                     });
@@ -398,7 +433,8 @@ frame.on("ready", () => {
             stage.addChild(processingLetterInteraction);
             stage.addChild(scissorsCutLines);
             stage.addChild(processingLetterBorder);
-            updateScissorsCutLines();
+            // DEBUG ONLY: Uncomment to redraw the retained cut-line overlay.
+            // updateScissorsCutLines();
 
             stage.update();
         };
@@ -425,39 +461,6 @@ frame.on("ready", () => {
         });
         targetArea.render(currentWord);
         targetArea.updateProcessingPositionGlow(currentWord, stepIndex);
-
-        const targetBarInteraction = new createjs.Shape();
-        targetBarInteraction.graphics
-            .beginFill("rgba(255, 255, 255, 0.01)")
-            .drawRect(0, 0, targetBarWidth, targetBarHeight);
-        targetBarInteraction.x = targetBarX;
-        targetBarInteraction.y = targetBarY;
-        targetBarInteraction.cursor = "pointer";
-        targetBarInteraction.on("click", () => {
-            const step = currentWord.targetSlots[stepIndex];
-            console.log("[targetConjunct] targetbar clicked", {
-                stepIndex,
-                targetPositions: step && step.targetPositions,
-                targetConjunct: step && step.targetConjunct
-            });
-            if (!step) return;
-            const isCompleteStep = SanskritSmith.isCompleteTargetStep(step);
-            if (isCompleteStep) targetAnimator.animateCompleteConjunct(step);
-            else targetAnimator.animateTargetPositionsToConjunct(step);
-        });
-        stage.addChild(targetBarInteraction);
-
-        function updateProcessingLetter(letterParts, processingLetter) {
-            const step = currentWord.targetSlots[stepIndex];
-            const position = step && step.processingPosition;
-            const text = step?.processingLetter
-                || (position === "" || position === undefined
-                    ? ""
-                    : currentWord.letters[Number(position) - 1]);
-            processingLetter.text = text;
-            letterParts.setText(text);
-            if (updateScissorsCutLines) updateScissorsCutLines();
-        }
 
         const toolArea = SanskritSmith.createToolArea({
             stage,
@@ -523,7 +526,7 @@ frame.on("ready", () => {
         const stage = frame.stage;
         const message = new createjs.Text(
             `Unable to start the game.\n${error.message}`,
-            "bold 22px Arial",
+            `bold ${frame.height * (22 / SanskritSmith.DESIGN_SIZE.height)}px Arial`,
             "#FFFFFF"
         );
         message.textAlign = "center";

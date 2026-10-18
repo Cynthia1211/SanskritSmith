@@ -1,7 +1,6 @@
 window.SanskritSmith = window.SanskritSmith || {};
 
 SanskritSmith.ASSET_PATHS = {
-    background: "assets/game/background.jpeg",
     forgingStation: "assets/game/forgingStation.png",
     logo: "assets/game/SanskritSmith.png",
     targetBackground: "assets/game/targetBackground.png",
@@ -9,26 +8,31 @@ SanskritSmith.ASSET_PATHS = {
     assetRoot: "assets/"
 };
 
+SanskritSmith.DESIGN_SIZE = Object.freeze({width: 1200, height: 700});
+
 SanskritSmith.calculateGameLayout = (frame, targetBarImage) => {
+    const scaleX = frame.width / SanskritSmith.DESIGN_SIZE.width;
+    const scaleY = frame.height / SanskritSmith.DESIGN_SIZE.height;
+    const uiScale = Math.min(scaleX, scaleY);
     const leftAreaWidth = frame.width * 2 / 3;
     const rightAreaX = leftAreaWidth;
     const rightAreaWidth = frame.width - leftAreaWidth;
     const targetBarImageWidth = targetBarImage.naturalWidth || targetBarImage.width;
     const targetBarImageHeight = targetBarImage.naturalHeight || targetBarImage.height;
     const targetBarTargetWidth = leftAreaWidth * 0.9;
-    const targetBarY = 5;
+    const targetBarY = 5 * scaleY;
     const targetBarScaleX = targetBarTargetWidth / targetBarImageWidth;
-    const targetBarScaleY = 150 / targetBarImageHeight;
+    const targetBarScaleY = frame.height * (150 / SanskritSmith.DESIGN_SIZE.height) / targetBarImageHeight;
     const targetBarWidth = targetBarImageWidth * targetBarScaleX;
     const targetBarHeight = targetBarImageHeight * targetBarScaleY;
     const targetBarX = (leftAreaWidth - targetBarWidth) / 2;
     const toolsAreaWidth = leftAreaWidth * 0.98;
     const toolsAreaX = (leftAreaWidth - toolsAreaWidth) / 2;
-    const toolsAreaHeight = 150;
+    const toolsAreaHeight = frame.height * (150 / SanskritSmith.DESIGN_SIZE.height);
     const toolsAreaY = frame.height - toolsAreaHeight;
     const infoAreaWidth = rightAreaWidth * 0.85;
     const infoAreaX = rightAreaX + (rightAreaWidth - infoAreaWidth) / 2;
-    const infoAreaHeight = 620;
+    const infoAreaHeight = frame.height * (620 / SanskritSmith.DESIGN_SIZE.height);
     const infoSectionWidth = infoAreaWidth * 0.9;
     const infoSectionX = infoAreaX + (infoAreaWidth - infoSectionWidth) / 2;
 
@@ -50,7 +54,10 @@ SanskritSmith.calculateGameLayout = (frame, targetBarImage) => {
         infoAreaX,
         infoAreaHeight,
         infoSectionWidth,
-        infoSectionX
+        infoSectionX,
+        scaleX,
+        scaleY,
+        uiScale
     };
 };
 
@@ -58,8 +65,8 @@ SanskritSmith.addRoundedPanel = (stage, createjs, {
     x, y, width, height,
     fill = "rgba(128, 128, 128, 0.6)",
     stroke = "#444444",
-    strokeWidth = 2,
-    radius = 12
+    strokeWidth,
+    radius
 }) => {
     const panel = new createjs.Shape();
     panel.graphics
@@ -72,10 +79,6 @@ SanskritSmith.addRoundedPanel = (stage, createjs, {
     stage.addChild(panel);
     return panel;
 };
-
-SanskritSmith.isCompleteTargetStep = step => Boolean(step)
-    && (step.processingPosition === "" || step.processingPosition == null)
-    && (step.tool === "" || step.tool == null);
 
 SanskritSmith.getTargetPositions = (step, boxCount) => [...new Set((step?.targetPositions || [])
     .map(Number)
@@ -102,18 +105,20 @@ SanskritSmith.createTargetArea = ({stage, createjs, layout, addOutlinedText}) =>
     targetBar.image.onload = () => stage.update();
     stage.addChild(targetBar);
 
-    const letterWidth = 85;
-    const letterHeight = 85;
-    const letterGap = 30;
+    const letterHeight = targetBarHeight * (85 / 150);
+    const letterWidth = letterHeight;
+    const letterGap = letterHeight * (30 / 85);
+    const letterUnit = letterHeight / 85;
     const letterBoxes = [];
     const textRefs = [];
     let letterStartX = targetBarX;
     const letterY = targetBarY + targetBarHeight / 2 - letterHeight / 2;
     const processingPositionGlow = new createjs.Shape();
     processingPositionGlow.graphics
-        .setStrokeStyle(5)
+        .setStrokeStyle(5 * letterUnit)
         .beginStroke("#FFD700")
-        .drawRoundRect(-4, -4, letterWidth + 8, letterHeight + 8, 15);
+        .drawRoundRect(-4 * letterUnit, -4 * letterUnit,
+            letterWidth + 8 * letterUnit, letterHeight + 8 * letterUnit, 15 * letterUnit);
     processingPositionGlow.visible = false;
     processingPositionGlow.mouseEnabled = false;
     stage.addChild(processingPositionGlow);
@@ -140,11 +145,11 @@ SanskritSmith.createTargetArea = ({stage, createjs, layout, addOutlinedText}) =>
             const box = new createjs.Shape();
             if (currentWord.initial[index] === "_") {
                 box.graphics
-                    .setStrokeStyle(4)
-                    .setStrokeDash([6, 4])
+                    .setStrokeStyle(4 * letterUnit)
+                    .setStrokeDash([6 * letterUnit, 4 * letterUnit])
                     .beginStroke("#FFFFFF")
                     .beginFill("rgba(245, 232, 200, 0.2)")
-                    .drawRoundRect(0, 0, letterWidth, letterHeight, 12);
+                    .drawRoundRect(0, 0, letterWidth, letterHeight, 12 * letterUnit);
             }
             box.x = letterStartX + index * (letterWidth + letterGap);
             box.y = letterY;
@@ -152,7 +157,7 @@ SanskritSmith.createTargetArea = ({stage, createjs, layout, addOutlinedText}) =>
             letterBoxes.push(box);
             textRefs.push(addOutlinedText(
                 text,
-                "bold 50px Arial",
+                `bold ${50 * letterUnit}px Arial`,
                 box.x + letterWidth / 2,
                 box.y + letterHeight / 2
             ));
@@ -202,6 +207,7 @@ SanskritSmith.attachToolInteraction = ({
     getCurrentStep,
     processingLetterBox,
     processingLetterSize,
+    uiScale,
     isCorrectTool,
     onCorrectDrop,
     onIncorrectDrop
@@ -224,8 +230,8 @@ SanskritSmith.attachToolInteraction = ({
     tool.on("mouseover", () => {
         hovered = true;
         updateScale();
-        if (typeof tool.glow === "function") tool.glow("#FFD700", 50);
-        else tool.shadow = new createjs.Shadow("#FFD700", 0, 0, 20);
+        if (typeof tool.glow === "function") tool.glow("#FFD700", 50 * uiScale);
+        else tool.shadow = new createjs.Shadow("#FFD700", 0, 0, 20 * uiScale);
         stage.update();
     });
     tool.on("mouseout", () => {
@@ -292,6 +298,7 @@ SanskritSmith.createToolArea = ({
     onIncorrectTool
 }) => {
     const {toolsAreaX, toolsAreaWidth, toolsAreaHeight, toolsAreaY} = layout;
+    const {uiScale} = layout;
     const toolNames = [...new Set(levels.flatMap(level => level.toolsOptions || []))];
     const availableTools = toolNames
         .map(name => toolData.find(item => item.toolName.toLowerCase() === name.toLowerCase()))
@@ -373,6 +380,7 @@ SanskritSmith.createToolArea = ({
                     getCurrentStep,
                     processingLetterBox: getProcessingLetterBox,
                     processingLetterSize: getProcessingLetterSize,
+                    uiScale,
                     isCorrectTool: step => step.tool
                         && toolInfo.toolName.toLowerCase() === step.tool.toLowerCase(),
                     onCorrectDrop: () => onCorrectTool(toolInfo.toolName),
@@ -391,10 +399,19 @@ SanskritSmith.createToolArea = ({
 
         const textCenterX = toolX + toolWidth / 2;
         const textTop = toolTop + actualToolHeight * 0.55;
-        const textBottom = toolTop + actualToolHeight - 8;
+        const textBottom = toolTop + actualToolHeight - 8 * uiScale;
         const textCenterY = (textTop + textBottom) / 2;
-        const name = addOutlinedText(toolInfo.label || toolInfo.toolName, "bold 21px Arial", textCenterX, textCenterY - 20);
-        const effect = addOutlinedText(toolInfo.toolEffect || "tool effect", "16px Arial", textCenterX, textCenterY + 5);
+        const name = addOutlinedText(toolInfo.label || toolInfo.toolName,
+            `bold ${21 * uiScale}px Arial`, textCenterX, textCenterY - 30 * uiScale);
+        const effect = addOutlinedText(
+            toolInfo.toolEffect || "tool effect",
+            `${15 * uiScale}px Arial`,
+            textCenterX,
+            textCenterY - 8 * uiScale,
+            toolWidth * 0.88
+        );
+        effect.textOutline.lineHeight = 18 * uiScale;
+        effect.textFill.lineHeight = 18 * uiScale;
         displays.push(name.textOutline, name.textFill, effect.textOutline, effect.textFill);
 
         displayGroup = {
@@ -438,22 +455,26 @@ SanskritSmith.createGameUI = ({
         infoSectionWidth,
         infoSectionX
     } = layout;
+    const {scaleX, scaleY, uiScale} = layout;
+    const sx = value => value * scaleX;
+    const sy = value => value * scaleY;
+    const su = value => value * uiScale;
     const selectedWordLabels = [];
 
     const infoArea = new createjs.Shape();
     infoArea.graphics.beginFill("rgba(204, 204, 204, 0.2)")
-        .drawRoundRect(0, 0, infoAreaWidth, infoAreaHeight, 16);
+        .drawRoundRect(0, 0, infoAreaWidth, infoAreaHeight, su(16));
     infoArea.x = infoAreaX;
-    infoArea.y = 40;
+    infoArea.y = sy(40);
     stage.addChild(infoArea);
 
-    const panelContentOffsetY = 20;
+    const panelContentOffsetY = sy(20);
     const panelContentStartIndex = stage.children.length;
     let panelContentShifted = false;
 
     let showHowToPlayPopup = null;
-    const controlButtonHeight = 24;
-    const controlButtonY = 150 - controlButtonHeight * 1.5;
+    const controlButtonHeight = sy(24);
+    const controlButtonY = sy(150 - 24 * 1.5);
     const logoBitmap = new createjs.Bitmap(SanskritSmith.ASSET_PATHS.logo);
     const layoutLogo = () => {
         const imageWidth = logoBitmap.image.naturalWidth || logoBitmap.image.width;
@@ -478,9 +499,9 @@ SanskritSmith.createGameUI = ({
     layoutLogo();
     stage.addChild(logoBitmap);
 
-    const controlButtonGap = 10;
+    const controlButtonGap = sx(10);
     const controlButtons = [
-        {label: "How to Play", width: 90},
+        {label: "How to Play", width: sx(90)},
         {label: "Music", icon: "🎵", width: controlButtonHeight},
         {label: "SFX", icon: "🔔", width: controlButtonHeight}
     ];
@@ -490,8 +511,8 @@ SanskritSmith.createGameUI = ({
 
     controlButtons.forEach(({label, icon, width}) => {
         const button = new createjs.Shape();
-        button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#000000")
-            .drawRoundRect(0, 0, width, controlButtonHeight, 6);
+        button.graphics.beginFill("#FFF2A8").setStrokeStyle(su(2)).beginStroke("#000000")
+            .drawRoundRect(0, 0, width, controlButtonHeight, su(6));
         button.x = controlButtonX;
         button.y = controlButtonY;
         button.cursor = "pointer";
@@ -502,7 +523,8 @@ SanskritSmith.createGameUI = ({
             });
         }
 
-        const buttonText = new createjs.Text(icon || label, icon ? "13px Arial" : "bold 12px Arial", "#000000");
+        const buttonText = new createjs.Text(icon || label,
+            icon ? `${su(13)}px Arial` : `bold ${su(12)}px Arial`, "#000000");
         buttonText.textAlign = "center";
         buttonText.textBaseline = "middle";
         buttonText.x = button.x + width / 2;
@@ -512,7 +534,7 @@ SanskritSmith.createGameUI = ({
 
         if (icon) {
             let enabled = true;
-            const offMark = new createjs.Text("X", "bold 15px Arial", "#E00000");
+            const offMark = new createjs.Text("X", `bold ${su(15)}px Arial`, "#E00000");
             offMark.textAlign = "center";
             offMark.textBaseline = "middle";
             offMark.x = buttonText.x;
@@ -531,10 +553,12 @@ SanskritSmith.createGameUI = ({
     });
 
     SanskritSmith.addRoundedPanel(stage, createjs, {
-        x: infoSectionX, y: 150, width: infoSectionWidth, height: 130
+        x: infoSectionX, y: sy(150), width: infoSectionWidth, height: sy(130),
+        strokeWidth: su(2), radius: su(12)
     });
     SanskritSmith.addRoundedPanel(stage, createjs, {
-        x: infoSectionX, y: 355, width: infoSectionWidth, height: 265
+        x: infoSectionX, y: sy(355), width: infoSectionWidth, height: sy(265),
+        strokeWidth: su(2), radius: su(12)
     });
 
     const addText = (text, font, x, y, align = "left") => {
@@ -542,17 +566,17 @@ SanskritSmith.createGameUI = ({
         label.textAlign = align;
         label.textBaseline = "middle";
         label.x = x;
-        label.y = y + (panelContentShifted ? panelContentOffsetY : 0);
+        label.y = sy(y) + (panelContentShifted ? panelContentOffsetY : 0);
         stage.addChild(label);
         return label;
     };
 
     const statusLabelX = 1020;
     const statusValueX = 1130;
-    addText("Today's Income", "bold 22px Arial", statusLabelX, 180, "right");
-    const todayIncomeLabel = addText("$0", "bold 22px Arial", statusValueX, 180, "right");
-    addText("Today's Completed", "15px Arial", statusLabelX, 215, "right");
-    const todayCompletedLabel = addText("0", "bold 18px Arial", statusValueX, 215, "right");
+    addText("Today's Income", `bold ${su(22)}px Arial`, statusLabelX, 180, "right");
+    const todayIncomeLabel = addText("$0", `bold ${su(22)}px Arial`, statusValueX, 180, "right");
+    addText("Today's Completed", `${su(15)}px Arial`, statusLabelX, 215, "right");
+    const todayCompletedLabel = addText("0", `bold ${su(18)}px Arial`, statusValueX, 215, "right");
     let todayIncome = 0;
     let todayCompleted = 0;
 
@@ -575,13 +599,13 @@ SanskritSmith.createGameUI = ({
         stage.addChild(overlay);
         modalObjects.push(overlay);
 
-        const panelWidth = 620;
-        const panelHeight = Math.max(340, 205 + breakdown.length * 42);
+        const panelWidth = sx(620);
+        const panelHeight = Math.max(sy(340), sy(205 + breakdown.length * 42));
         const panelX = (frame.width - panelWidth) / 2;
         const panelY = (frame.height - panelHeight) / 2;
         const panel = new createjs.Shape();
-        panel.graphics.beginFill("rgba(94, 94, 94, 0.6)").setStrokeStyle(4).beginStroke("#333333")
-            .drawRoundRect(0, 0, panelWidth, panelHeight, 24);
+        panel.graphics.beginFill("rgba(94, 94, 94, 0.6)").setStrokeStyle(su(4)).beginStroke("#333333")
+            .drawRoundRect(0, 0, panelWidth, panelHeight, su(24));
         panel.x = panelX;
         panel.y = panelY;
         stage.addChild(panel);
@@ -591,7 +615,7 @@ SanskritSmith.createGameUI = ({
             const label = new createjs.Text(text, font, color);
             label.textAlign = align;
             label.textBaseline = "middle";
-            label.x = x;
+        label.x = sx(x);
             label.y = y;
             label.mouseEnabled = false;
             stage.addChild(label);
@@ -601,34 +625,34 @@ SanskritSmith.createGameUI = ({
         const centerX = frame.width / 2;
         const earnedText = earned < 0 ? `-$${Math.abs(earned)}` : `$${earned}`;
         const headline = `You earned ${earnedText}`;
-        const headlineY = panelY + 78;
-        const headlineOutline = new createjs.Text(headline, "bold 42px Arial", "#000000");
+        const headlineY = panelY + sy(78);
+        const headlineOutline = new createjs.Text(headline, `bold ${su(42)}px Arial`, "#000000");
         headlineOutline.textAlign = "center";
         headlineOutline.textBaseline = "middle";
-        headlineOutline.outline = 5;
+        headlineOutline.outline = su(5);
         headlineOutline.x = centerX;
         headlineOutline.y = headlineY;
         headlineOutline.mouseEnabled = false;
         stage.addChild(headlineOutline);
         modalObjects.push(headlineOutline);
-        addModalText(headline, "bold 42px Arial", centerX, headlineY, "#FFF2A8");
+        addModalText(headline, `bold ${su(42)}px Arial`, centerX, headlineY, "#FFF2A8");
         breakdown.forEach((item, index) => {
-            const rowY = panelY + 145 + index * 42;
-            addModalText(`${item.label}:`, "19px Arial", centerX + 10, rowY, "#FFFFFF", "right");
-            addModalText(item.value, "19px Arial", centerX + 210, rowY, "#FFFFFF", "right");
+            const rowY = panelY + sy(145 + index * 42);
+            addModalText(`${item.label}:`, `${su(19)}px Arial`, centerX + sx(10), rowY, "#FFFFFF", "right");
+            addModalText(item.value, `${su(19)}px Arial`, centerX + sx(210), rowY, "#FFFFFF", "right");
         });
 
-        const buttonWidth = 180;
-        const buttonHeight = 48;
+        const buttonWidth = sx(180);
+        const buttonHeight = sy(48);
         const button = new createjs.Shape();
-        button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#111111")
-            .drawRoundRect(0, 0, buttonWidth, buttonHeight, 12);
+        button.graphics.beginFill("#FFF2A8").setStrokeStyle(su(2)).beginStroke("#111111")
+            .drawRoundRect(0, 0, buttonWidth, buttonHeight, su(12));
         button.x = centerX - buttonWidth / 2;
-        button.y = panelY + panelHeight - 75;
+        button.y = panelY + panelHeight - sy(75);
         button.cursor = "pointer";
         stage.addChild(button);
         modalObjects.push(button);
-        addModalText("Forge Next", "bold 20px Arial", centerX, button.y + buttonHeight / 2, "#111111");
+        addModalText("Forge Next", `bold ${su(20)}px Arial`, centerX, button.y + buttonHeight / 2, "#111111");
         button.on("click", () => {
             modalObjects.forEach(object => stage.removeChild(object));
             levelDropdown.disabled = false;
@@ -650,13 +674,13 @@ SanskritSmith.createGameUI = ({
         stage.addChild(overlay);
         modalObjects.push(overlay);
 
-        const panelWidth = 720;
-        const panelHeight = 430;
+        const panelWidth = sx(720);
+        const panelHeight = sy(430);
         const panelX = (frame.width - panelWidth) / 2;
         const panelY = (frame.height - panelHeight) / 2;
         const panel = new createjs.Shape();
-        panel.graphics.beginFill("rgba(200, 200, 200, 0.5)").setStrokeStyle(4).beginStroke("#333333")
-            .drawRoundRect(0, 0, panelWidth, panelHeight, 24);
+        panel.graphics.beginFill("rgba(200, 200, 200, 0.5)").setStrokeStyle(su(4)).beginStroke("#333333")
+            .drawRoundRect(0, 0, panelWidth, panelHeight, su(24));
         panel.x = panelX;
         panel.y = panelY;
         stage.addChild(panel);
@@ -673,21 +697,21 @@ SanskritSmith.createGameUI = ({
             modalObjects.push(label);
             return label;
         };
-        addPopupText("How to Play", "bold 34px Arial", frame.width / 2, panelY + 55, "#FFF2A8");
+        addPopupText("How to Play", `bold ${su(34)}px Arial`, frame.width / 2, panelY + sy(55), "#FFF2A8");
 
-        const contentX = panelX + 45;
-        const contentY = panelY + 115;
-        const contentWidth = panelWidth - 100;
-        const viewportHeight = panelHeight - 220;
+        const contentX = panelX + sx(45);
+        const contentY = panelY + sy(115);
+        const contentWidth = panelWidth - sx(100);
+        const viewportHeight = panelHeight - sy(220);
         const instructions = new createjs.Text(
             SanskritSmith.howToPlay.map((instruction, index) => `${index + 1}. ${instruction}`).join("\n"),
-            "18px Arial",
+            `${su(18)}px Arial`,
             "#FFFFFF"
         );
         instructions.textAlign = "left";
         instructions.textBaseline = "top";
         instructions.lineWidth = contentWidth;
-        instructions.lineHeight = 28;
+        instructions.lineHeight = sy(28);
         instructions.x = 0;
         instructions.y = 0;
         instructions.mouseEnabled = false;
@@ -706,9 +730,10 @@ SanskritSmith.createGameUI = ({
 
         const contentHeight = instructions.getMetrics().height;
         const maxScroll = Math.max(0, contentHeight - viewportHeight);
-        const scrollbarX = panelX + panelWidth - 38;
+        const scrollbarX = panelX + panelWidth - sx(38);
         const track = new createjs.Shape();
-        track.graphics.beginFill("rgba(30, 30, 30, 0.35)").drawRoundRect(0, 0, 8, viewportHeight, 4);
+        track.graphics.beginFill("rgba(30, 30, 30, 0.35)")
+            .drawRoundRect(0, 0, sx(8), viewportHeight, su(4));
         track.x = scrollbarX;
         track.y = contentY;
         track.visible = maxScroll > 0;
@@ -716,10 +741,10 @@ SanskritSmith.createGameUI = ({
         modalObjects.push(track);
 
         const thumbHeight = maxScroll > 0
-            ? Math.max(32, viewportHeight * viewportHeight / contentHeight)
+            ? Math.max(sy(32), viewportHeight * viewportHeight / contentHeight)
             : viewportHeight;
         const thumb = new createjs.Shape();
-        thumb.graphics.beginFill("#FFF2A8").drawRoundRect(0, 0, 8, thumbHeight, 4);
+        thumb.graphics.beginFill("#FFF2A8").drawRoundRect(0, 0, sx(8), thumbHeight, su(4));
         thumb.x = scrollbarX;
         thumb.y = contentY;
         thumb.visible = maxScroll > 0;
@@ -764,17 +789,18 @@ SanskritSmith.createGameUI = ({
         };
         stage.canvas.addEventListener("wheel", handleWheel, {passive: false});
 
-        const buttonWidth = 160;
-        const buttonHeight = 44;
+        const buttonWidth = sx(160);
+        const buttonHeight = sy(44);
         const button = new createjs.Shape();
-        button.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#111111")
-            .drawRoundRect(0, 0, buttonWidth, buttonHeight, 12);
+        button.graphics.beginFill("#FFF2A8").setStrokeStyle(su(2)).beginStroke("#111111")
+            .drawRoundRect(0, 0, buttonWidth, buttonHeight, su(12));
         button.x = frame.width / 2 - buttonWidth / 2;
-        button.y = panelY + panelHeight - 65;
+        button.y = panelY + panelHeight - sy(65);
         button.cursor = "pointer";
         stage.addChild(button);
         modalObjects.push(button);
-        addPopupText("Close", "bold 19px Arial", frame.width / 2, button.y + buttonHeight / 2, "#111111");
+        addPopupText("Close", `bold ${su(19)}px Arial`, frame.width / 2,
+            button.y + buttonHeight / 2, "#111111");
         button.on("click", () => {
             stage.canvas.removeEventListener("wheel", handleWheel);
             modalObjects.forEach(object => stage.removeChild(object));
@@ -785,30 +811,31 @@ SanskritSmith.createGameUI = ({
         stage.update();
     };
 
-    const hintButtonWidth = 76;
-    const hintButtonHeight = 24;
+    const hintButtonWidth = sx(76);
+    const hintButtonHeight = sy(24);
     const hintButton = new createjs.Shape();
-    hintButton.graphics.beginFill("#FFF2A8").setStrokeStyle(2).beginStroke("#000000")
-        .drawRoundRect(0, 0, hintButtonWidth, hintButtonHeight, 8);
-    hintButton.x = statusLabelX - hintButtonWidth - 12;
-    hintButton.y = 241;
+    hintButton.graphics.beginFill("#FFF2A8").setStrokeStyle(su(2)).beginStroke("#000000")
+        .drawRoundRect(0, 0, hintButtonWidth, hintButtonHeight, su(8));
+    hintButton.x = sx(statusLabelX) - hintButtonWidth - sx(12);
+    hintButton.y = sy(241);
     hintButton.cursor = "pointer";
     stage.addChild(hintButton);
-    const hintButtonLabel = addText("Hint 2/2", "bold 13px Arial",
-        hintButton.x + hintButtonWidth / 2, hintButton.y + hintButtonHeight / 2, "center");
+    const hintButtonLabel = addText("Hint 2/2", `bold ${su(13)}px Arial`,
+        (hintButton.x + hintButtonWidth / 2) / scaleX,
+        (hintButton.y + hintButtonHeight / 2) / scaleY, "center");
     hintButtonLabel.color = "#000000";
     hintButtonLabel.mouseEnabled = false;
 
-    const attemptsLabel = addText("Attempts: 3/3", "bold 17px Arial", statusValueX, 253, "right");
-    const levelTitle = addText("Level 1", "bold 26px Arial", 855, 380);
-    const levelRequirement = addText("Need 5 pieces to complete the level", "12px Arial", 855, 599);
-    const progressLabel = addText("Level Progress", "bold 13px Arial", 855, 408);
+    const attemptsLabel = addText("Attempts: 3/3", `bold ${su(17)}px Arial`, statusValueX, 253, "right");
+    const levelTitle = addText("Level 1", `bold ${su(26)}px Arial`, 855, 380);
+    const levelRequirement = addText("Need 5 pieces to complete the level", `${su(12)}px Arial`, 855, 599);
+    const progressLabel = addText("Level Progress", `bold ${su(13)}px Arial`, 855, 408);
 
-    const progressBarWidth = 260;
+    const progressBarWidth = sx(260);
     const progressBar = new createjs.Shape();
-    progressBar.graphics.beginFill("#174D17").drawRoundRect(0, 0, progressBarWidth, 16, 8);
-    progressBar.x = 855;
-    progressBar.y = 418;
+    progressBar.graphics.beginFill("#174D17").drawRoundRect(0, 0, progressBarWidth, sy(16), su(8));
+    progressBar.x = sx(855);
+    progressBar.y = sy(418);
     stage.addChild(progressBar);
     const progressFill = new createjs.Shape();
     progressFill.x = progressBar.x;
@@ -839,11 +866,12 @@ SanskritSmith.createGameUI = ({
         const bounds = canvas.getBoundingClientRect();
         const scaleX = bounds.width / frame.width;
         const scaleY = bounds.height / frame.height;
-        levelDropdown.style.borderWidth = `${2 * Math.min(scaleX, scaleY)}px`;
+        levelDropdown.style.borderWidth = `${su(2) * Math.min(scaleX, scaleY)}px`;
         levelDropdown.style.left = `${bounds.left + infoSectionX * scaleX}px`;
-        levelDropdown.style.top = `${bounds.top + (295 + panelContentOffsetY) * scaleY}px`;
+        levelDropdown.style.top = `${bounds.top + (sy(295) + panelContentOffsetY) * scaleY}px`;
         levelDropdown.style.width = `${infoSectionWidth * scaleX}px`;
-        levelDropdown.style.height = `${45 * scaleY}px`;
+        levelDropdown.style.height = `${sy(45) * scaleY}px`;
+        levelDropdown.style.fontSize = `${su(25) * Math.min(scaleX, scaleY)}px`;
     };
 
     const updateHintButton = () => {
@@ -870,7 +898,7 @@ SanskritSmith.createGameUI = ({
             const visibleWord = index < completed || state.hintedWordIndices.has(index)
                 ? ` ${word.word}`
                 : "";
-            const label = addText(`${index + 1}.${visibleWord}`, "18px Arial", 855,
+            const label = addText(`${index + 1}.${visibleWord}`, `${su(18)}px Arial`, 855,
                 455 + index * 28);
             selectedWordLabels.push(label);
         });
@@ -882,7 +910,7 @@ SanskritSmith.createGameUI = ({
         if (ratio > 0) {
             const fillWidth = progressBarWidth * ratio;
             progressFill.graphics.beginFill("#FFF2A8")
-                .drawRoundRect(0, 0, fillWidth, 16, Math.min(8, fillWidth / 2));
+                .drawRoundRect(0, 0, fillWidth, sy(16), Math.min(su(8), fillWidth / 2));
         }
         stage.update();
     };
@@ -938,7 +966,6 @@ SanskritSmith.createGameUI = ({
         updateHintButton,
         updateAttemptsLabel,
         updateLevelDropdown,
-        positionLevelDropdown,
         showCampaignComplete() {
             levelTitle.text = "All levels complete!";
             levelRequirement.text = "You completed every selected word.";
