@@ -8,40 +8,40 @@
           "id": 1, "word": "स्तः", "meaning": "",
           "letters": ["स्", "तः"], "initial":["_", "तः"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "1", "processingLetter": "", "base": "स", "tool": "axe", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "स्तः"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "स्तः"}
+            {"step": 0, "processingPosition": "1", "base": "स", "tool": "axe", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "स्तः"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "स्तः"}
           ]
         },
         {
           "id": 2, "word": "पुस्तकम्", "meaning": "",
           "letters": ["पु", "स्", "त", "क", "म्"], "initial":["पु", "_", "त", "क", "म्"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "स", "tool": "axe", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "स्त"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3", "4", "5"], "targetConjunct": "पुस्तकम्"}
+            {"step": 0, "processingPosition": "2", "base": "स", "tool": "axe", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "स्त"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3", "4", "5"], "targetConjunct": "पुस्तकम्"}
           ]
         },
         {
           "id": 3, "word": "कृष्णः", "meaning": "",
           "letters": ["कृ", "ष्", "णः"], "initial":["कृ", "_", "णः"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "ष", "tool": "axe", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "ष्णः"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3"], "targetConjunct": "कृष्णः"}
+            {"step": 0, "processingPosition": "2", "base": "ष", "tool": "axe", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "ष्णः"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3"], "targetConjunct": "कृष्णः"}
           ]
         },
         {
           "id": 4, "word": "रक्तः", "meaning": "",
           "letters": ["र", "क्", "तः"], "initial":["र", "_", "तः"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "क", "tool": "scissors", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "क्तः"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3"], "targetConjunct": "रक्तः"}
+            {"step": 0, "processingPosition": "2", "base": "क", "tool": "scissors", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "क्तः"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3"], "targetConjunct": "रक्तः"}
           ]
         },
         {
           "id": 5, "word": "दफ्तर", "meaning": "",
           "letters": ["द", "फ्", "त", "र"], "initial":["द", "_", "त", "र"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "फ", "tool": "scissors", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "फ्त"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3", "4"], "targetConjunct": "दफ्तर"}
+            {"step": 0, "processingPosition": "2", "base": "फ", "tool": "scissors", "toolAnimation": "", "targetPositions": ["2", "3"], "targetConjunct": "फ्त"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2", "3", "4"], "targetConjunct": "दफ्तर"}
           ]
         }
       ]
@@ -54,32 +54,32 @@
           "id": 1, "word": "अर्चकः", "meaning": "",
           "letters": ["अ", "र्", "च", "कः"], "initial":["अ", "_", "च", "क"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "र", "tool": "hook", "toolAnimation": "hookRepha", "targetPositions": ["2", "3"], "targetConjunct": "र्च"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4"], "targetConjunct": "अर्चकः"}
+            {"step": 0, "processingPosition": "2", "base": "र", "tool": "hook", "toolAnimation": "hookRepha", "targetPositions": ["2", "3"], "targetConjunct": "र्च"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4"], "targetConjunct": "अर्चकः"}
           ]
         },
         {
           "id": 2, "word": "चक्रम्", "meaning": "",
           "letters": ["च", "क्", "र", "म्"], "initial":["च", "_", "र", "म्"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "क", "tool": "hook", "toolAnimation": "hookRakaar", "targetPositions": ["2", "3"], "targetConjunct": "क्र"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4"], "targetConjunct": "चक्रम्"}
+            {"step": 0, "processingPosition": "2", "base": "क", "tool": "hook", "toolAnimation": "hookRakaar", "targetPositions": ["2", "3"], "targetConjunct": "क्र"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4"], "targetConjunct": "चक्रम्"}
           ]
         },
         {
           "id": 3, "word": "कुट्ठम्", "meaning": "",
           "letters": ["कु", "ट्", "ठ", "म्"], "initial":["कु", "_", "ठ", "म्"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "ट", "tool": "hook", "toolAnimation": "hookJoin", "targetPositions": ["2", "3"], "targetConjunct": "ट्ठ"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4"], "targetConjunct": "कुट्ठम्"}
+            {"step": 0, "processingPosition": "2", "base": "ट", "tool": "hook", "toolAnimation": "hookJoin", "targetPositions": ["2", "3"], "targetConjunct": "ट्ठ"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4"], "targetConjunct": "कुट्ठम्"}
           ]
         },
         {
           "id": 4, "word": "पट्टः", "meaning": "",
           "letters": ["प", "ट्", "ट"], "initial":["प", "_", "ट"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "2", "processingLetter": "", "base": "ट", "tool": "hook", "toolAnimation": "hookJoin", "targetPositions": ["2", "3"], "targetConjunct": "ट्ट"},
-            {"step": 1, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3"], "targetConjunct": "पट्टः"}
+            {"step": 0, "processingPosition": "2", "base": "ट", "tool": "hook", "toolAnimation": "hookJoin", "targetPositions": ["2", "3"], "targetConjunct": "ट्ट"},
+            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3"], "targetConjunct": "पट्टः"}
           ]
         }
       ]
@@ -92,9 +92,9 @@
           "id": 3, "word": "क्षेत्रम्", "meaning": "",
           "letters": ["फ्", "षे", "त्", "र", "म्"], "initial":["_", "षे", "_", "र", "म्"],
           "targetSlots": [
-            {"step": 0, "processingPosition": "1", "processingLetter": "फ्", "base": "फ्", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["1", "2"], "targetConjunct": "क्षे"},
-            {"step": 1, "processingPosition": "3", "processingLetter": "त्", "base": "त्", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["3", "4"], "targetConjunct": "त्र"},
-            {"step": 2, "processingPosition": "", "processingLetter": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4","5"], "targetConjunct": "क्षेत्रम्"}
+            {"step": 0, "processingPosition": "1", "base": "फ्", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["1", "2"], "targetConjunct": "क्षे"},
+            {"step": 1, "processingPosition": "3", "base": "त्", "tool": "hammer", "toolAnimation": "hammerReforge", "targetPositions": ["3", "4"], "targetConjunct": "त्र"},
+            {"step": 2, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2","3","4","5"], "targetConjunct": "क्षेत्रम्"}
           ]
         }
       ]
