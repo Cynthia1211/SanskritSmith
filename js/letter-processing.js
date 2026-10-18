@@ -1,5 +1,28 @@
 window.SanskritSmith = window.SanskritSmith || {};
 
+// Read the source character for a processing step from its target-bar position.
+SanskritSmith.getProcessingLetterText = (word, step) => {
+    if (!word || !step || step.processingPosition === "" || step.processingPosition == null) return "";
+    const position = Number(step.processingPosition);
+    if (!Number.isInteger(position) || position < 1) return "";
+    return word.letters[position - 1] || "";
+};
+
+// Check whether a step points to an existing character in the word.
+SanskritSmith.hasProcessingPosition = (step, word) => {
+    if (!word || !step || step.processingPosition === "" || step.processingPosition == null) return false;
+    const position = Number(step.processingPosition);
+    return Number.isInteger(position) && position >= 1 && position <= (word.letters?.length || 0);
+};
+
+// Synchronize the processing text object and its rendered letter parts.
+SanskritSmith.updateProcessingLetter = (letterParts, processingLetter, word, step, onUpdate) => {
+    const text = SanskritSmith.getProcessingLetterText(word, step);
+    processingLetter.text = text;
+    letterParts.setText(text);
+    if (onUpdate) onUpdate();
+};
+
 /** Creates and resets the display objects used for processing a letter. */
 SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, size}) => {
     // Create a square mask aligned with the processing-letter box.
@@ -35,7 +58,6 @@ SanskritSmith.createProcessingLetterParts = ({stage, createjs, baseLetter, box, 
     let visual = axeVisual;
 
     return {
-        firstLetter,
         secondLetter,
         firstMask,
         secondMask,
@@ -187,7 +209,7 @@ SanskritSmith.createConjunctAnimator = ({stage, createjs, targetArea, targetBarX
             const replacementX = isFinalStep
                 ? targetBarX + targetBarWidth / 2
                 : SanskritSmith.getTargetSlotCenterX(firstPosition, targetArea.letterStartX, targetArea.letterWidth, targetArea.letterGap);
-            const replacementFontSize = isFinalStep ? 60 : 50;
+            const replacementFontSize = targetArea.letterWidth * (isFinalStep ? 60 : 50) / 85;
             const replacementText = addOutlinedText(
                 step.targetConjunct || "",
                 `bold ${replacementFontSize}px Arial`,
@@ -309,7 +331,7 @@ SanskritSmith.createLetterProcessor = ({
     advanceToNextStep,
     defaultHiddenRightRatio
 }) => {
-    const {firstLetter, secondLetter, firstMask: firstLetterMask, secondMask: secondLetterMask} = letterParts;
+    const {secondLetter, firstMask: firstLetterMask, secondMask: secondLetterMask} = letterParts;
     // Guarantee that an animation advances once, even if its tween callback is missed.
     const continueOnce = (tween, fallbackDelay, callback, stageName) => {
         let continued = false;
@@ -511,38 +533,6 @@ SanskritSmith.createLetterProcessor = ({
         letter.scaleX = letter.scaleY = 1;
         stage.update();
         animateProcessedLetterToTarget(hiddenRightRatio, hiddenBottomRatio);
-    };
-
-    // Add a halant form and advance to the following processing step.
-    const gemHalant = params => {
-        const withHalant = typeof params.withHalant === "string" ? params.withHalant : "";
-        if (!withHalant) return genericToolAnimation();
-
-        const letter = letterParts.singleLetter;
-        const originalLetter = letterParts.firstLetter;
-        originalLetter.text = letter.text;
-        originalLetter.x = letter.x;
-        originalLetter.y = letter.y;
-        originalLetter.scaleX = letter.scaleX;
-        originalLetter.scaleY = letter.scaleY;
-        originalLetter.regX = letter.regX;
-        originalLetter.regY = letter.regY;
-        originalLetter.mask = null;
-        originalLetter.alpha = 1;
-        originalLetter.visible = true;
-        letter.text = withHalant;
-        letter.alpha = 0;
-        letter.visible = true;
-        stage.update();
-        const animation = createjs.Tween.get(letter)
-            .to({alpha: 1}, 200)
-            .on("change", () => stage.update());
-        continueOnce(animation, 450, () => {
-            originalLetter.visible = false;
-            stage.update();
-            advanceToNextStep();
-        }, "gemHalant");
-        return animation;
     };
 
     // Pull the following target-bar letter into the processing letter.
@@ -757,8 +747,8 @@ SanskritSmith.createLetterProcessor = ({
                 incomingLetter.visible = false;
 
                 for (let index = 0; index < shardCount; index += 1) {
-                    const width = 4 + Math.random() * 7;
-                    const height = 4 + Math.random() * 7;
+                    const width = letterWidth * (4 + Math.random() * 7) / 85;
+                    const height = letterHeight * (4 + Math.random() * 7) / 85;
                     const shard = new createjs.Shape();
                     shard.graphics.beginFill("#FFFFFF")
                         .moveTo(0, -height / 2)
@@ -772,11 +762,12 @@ SanskritSmith.createLetterProcessor = ({
                     shards.push(shard);
 
                     const angle = Math.random() * Math.PI * 2;
-                    const distance = 12 + Math.random() * 38;
+                    const distance = letterWidth * (12 + Math.random() * 38) / 85;
                     const shardTween = createjs.Tween.get(shard)
                         .to({
                             x: shard.x + Math.cos(angle) * distance,
-                            y: shard.y + Math.sin(angle) * distance + 5 + Math.random() * 14,
+                            y: shard.y + Math.sin(angle) * distance
+                                + letterHeight * (5 + Math.random() * 14) / 85,
                             rotation: (Math.random() - 0.5) * 360
                         }, 350)
                         .wait(500)
@@ -829,6 +820,9 @@ SanskritSmith.createLetterProcessor = ({
         return shrinkAnimation;
     };
 
+    // Dispatch the processed letter to its target without applying a cut offset.
+    const gloveDispatch = () => animateProcessedLetterToTarget(0, 0);
+
     // Map animation names to the corresponding tool-specific implementation.
     const handlers = {
         axeSplit: params => {
@@ -849,11 +843,11 @@ SanskritSmith.createLetterProcessor = ({
                 readRatio(params.hiddenBottomRatio, 0.45)
             );
         },
-        gemHalant,
         hookJoin,
         hookRepha,
         hookRakaar,
-        hammerReforge
+        hammerReforge,
+        gloveDispatch
     };
 
     return {

@@ -16,15 +16,16 @@ canvas {
     position: fixed;
     z-index: 10;
     box-sizing: border-box;
-    padding: 0 42px 0 12px;
-    border: 2px solid #000;
-    border-radius: 12px;
+    padding: 0 1.05em 0 0.3em;
+    border: 0.05em solid #000;
+    border-radius: 0.3em;
     -webkit-appearance: none;
     appearance: none;
     background-color: #FFF2A8;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m3 6 5 5 5-5' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
-    background-position: right 14px center;
+    background-size: 0.4em;
+    background-position: right 0.35em center;
     color: #000;
-    font: bold 40px Arial;
+    font: bold 1em Arial;
 }
