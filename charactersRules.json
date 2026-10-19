@@ -41,6 +41,8 @@
         "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.057}} ] },
     "स": { "audio": "",
         "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.1}} ] },
+    "ञ": { "audio": "",
+        "tools": [ {"tool": "axe", "toolAnimation": "axeSplit", "toolParams": {"hiddenRightRatio": 0.115}} ] },
 
 
     "फ": { "audio": "",

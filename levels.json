@@ -1,20 +1,6 @@
 {
   "levels": [
-            {
-      "id": "level_0",
-      "toolsOptions" : ["gloves", "axe", "scissors"],
-      "wordPools": [
-        {
-          "id": 1, "word": "फख", "meaning": "",
-          "letters": ["फ", "ख"], "initial":["_", "ख"],
-          "targetSlots": [
-            {"step": 0, "processingPosition": "1", "base": "फ", "tool": "scissors", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "फख"},
-            {"step": 1, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "फख"}
-          ]
-        }
-      ]
-    },
-        {
+    {
       "id": "level_1",
       "toolsOptions" : ["gloves", "axe", "scissors"],
       "wordPools": [

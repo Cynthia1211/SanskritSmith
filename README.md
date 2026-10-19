@@ -92,3 +92,23 @@ After the word's processing steps, add a final `targetSlots` entry with empty `p
   "targetPositions": ["1", "2", "3"], "targetConjunct": "..."
 }
 ```
+
+### Charactre configuration 
+
+Set `SanskritSmith.SHOW_SCISSORS_CUT_LINES` in `js/setting.js` to `true` to enter config mode and display the scissors cut lines over the character. Add a temporary `level_0` in `levels.json` with the original characters you want to inspect. Put each character in its own processing step (starting at `step: 0`) so you can view and adjust its cut position. For example:
+
+```json
+{ "id": "level_0",
+  "toolsOptions": ["axe", "scissors"],
+  "wordPools": [
+    {
+      "id": 1, "word": "खफ", "meaning": "",
+      "letters": ["ख", "फ"], "initial": ["_", "_"],
+      "targetSlots": [
+        { "step": 0, "processingPosition": "1", "base": "ख", "tool": "axe", "toolAnimation": "", "targetPositions": ["1"], "targetConjunct": "" },
+        { "step": 1, "processingPosition": "2", "base": "फ", "tool": "scissors", "toolAnimation": "", "targetPositions": ["2"], "targetConjunct": "" },
+        { "step": 2, "processingPosition": "", "base": "", "tool": "", "toolAnimation": "", "targetPositions": ["1", "2"], "targetConjunct": "खफ" }
+      ] } ] }
+```
+
+Adjust `hiddenRightRatio` and `hiddenBottomRatio` in `charactersRules.json` to move the vertical and horizontal scissors cut lines, respectively. Set the flag to `false` to hide the guides when finished.
