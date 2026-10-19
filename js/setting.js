@@ -7,6 +7,9 @@ SanskritSmith.SCORE_SETTINGS = Object.freeze({
     AttemptsDeductScore: 2
 });
 
+// Toggle processing-letter guide lines without changing the renderer.
+SanskritSmith.SHOW_SCISSORS_CUT_LINES = true;
+
 SanskritSmith.howToPlay = [
     "Drag the correct tool onto the letter being processed.",
     "Complete each step to combine the letters into the word.",

@@ -39,3 +39,70 @@ SanskritSmith.addOutlinedText = (stage, text, font, x, y, lineWidth, outlineWidt
         textFill.text = value;
     }};
 };
+
+SanskritSmith.createCutLinesHelper = ({
+    stage,
+    cutLines,
+    getWord,
+    getStep,
+    getProcessingCharacter,
+    getShowCutLines,
+    characterRules,
+    processingLetterBox,
+    processingLetterSize,
+    uiScale,
+    defaultHiddenRightRatio
+}) => () => {
+    const word = getWord();
+    const step = getStep();
+    const processingCharacter = getProcessingCharacter(word, step);
+    if (!step?.base || step.base !== processingCharacter) {
+        cutLines.alpha = 1;
+        cutLines.visible = false;
+        stage.update();
+        return;
+    }
+
+    const toolName = step.tool?.toLowerCase();
+    const isAxe = toolName === "axe";
+    const isScissors = toolName === "scissors";
+    const rule = isAxe || isScissors
+        ? (characterRules[step.base]?.tools || []).find(candidate =>
+            candidate.tool?.toLowerCase() === toolName
+        )
+        : null;
+    if (!rule) {
+        cutLines.alpha = 1;
+        cutLines.visible = false;
+        stage.update();
+        return;
+    }
+
+    const params = rule.toolParams || {};
+    const rightRatio = Number(params.hiddenRightRatio);
+    const bottomRatio = Number(params.hiddenBottomRatio);
+    const rightCutRatio = Math.max(0, Math.min(1,
+        0.5 + (Number.isFinite(rightRatio) ? rightRatio : defaultHiddenRightRatio)));
+    const effectiveBottomRatio = isAxe ? -0.5 : Number.isFinite(bottomRatio) ? bottomRatio : 0.45;
+    const bottomCutRatio = Math.max(0, Math.min(1, 0.5 + effectiveBottomRatio));
+    const cutX = processingLetterBox.x + processingLetterSize * rightCutRatio;
+    const cutY = processingLetterBox.y + processingLetterSize * bottomCutRatio;
+
+    cutLines.x = cutLines.y = 0;
+    cutLines.regX = cutLines.regY = 0;
+    cutLines.scaleX = cutLines.scaleY = 1;
+    cutLines.alpha = 1;
+    cutLines.graphics.clear()
+        .setStrokeStyle(2 * uiScale)
+        .setStrokeDash([6 * uiScale, 5 * uiScale], 0)
+        .beginStroke("#ff0000")
+        .moveTo(cutX, processingLetterBox.y)
+        .lineTo(cutX, processingLetterBox.y + processingLetterSize);
+    if (isAxe || isScissors) {
+        cutLines.graphics
+            .moveTo(processingLetterBox.x, cutY)
+            .lineTo(processingLetterBox.x + processingLetterSize, cutY);
+    }
+    cutLines.visible = getShowCutLines();
+    stage.update();
+};

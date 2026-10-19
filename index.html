@@ -352,53 +352,20 @@ frame.on("ready", () => {
                 advanceToNextStep: () => advanceToNextProcessingStep(),
                 defaultHiddenRightRatio: hiddenRightRatio
             });
-            // DEBUG ONLY: Keep the cut-line renderer below for future debugging; do not delete it.
-            /*
-            const showScissorsCutLines = true;
-            updateScissorsCutLines = () => {
-                const step = currentWord.targetSlots[stepIndex];
-                const toolName = step?.tool?.toLowerCase();
-                const isAxe = toolName === "axe";
-                const isScissors = toolName === "scissors";
-                const rule = isAxe || isScissors
-                    ? (characterRules[step?.base]?.tools || []).find(candidate =>
-                        candidate.tool?.toLowerCase() === toolName
-                    )
-                    : null;
-                if (!rule) {
-                    scissorsCutLines.alpha = 1;
-                    scissorsCutLines.visible = false;
-                    stage.update();
-                    return;
-                }
+            updateScissorsCutLines = SanskritSmith.createCutLinesHelper({
+                stage,
+                cutLines: scissorsCutLines,
+                getWord: () => currentWord,
+                getStep: () => currentWord.targetSlots[stepIndex],
+                getProcessingCharacter: (word, step) => SanskritSmith.getProcessingLetterText(word, step),
+                getShowCutLines: () => SanskritSmith.SHOW_SCISSORS_CUT_LINES,
+                characterRules,
+                processingLetterBox,
+                processingLetterSize,
+                uiScale: layout.uiScale,
+                defaultHiddenRightRatio: hiddenRightRatio
+            });
 
-                const params = rule.toolParams || {};
-                const rightRatio = Number(params.hiddenRightRatio);
-                const bottomRatio = Number(params.hiddenBottomRatio);
-                const rightCutRatio = Math.max(0, Math.min(1, 0.5 + (Number.isFinite(rightRatio) ? rightRatio : hiddenRightRatio)));
-                const effectiveBottomRatio = isAxe ? -0.5 : Number.isFinite(bottomRatio) ? bottomRatio : 0.45;
-                const bottomCutRatio = Math.max(0, Math.min(1, 0.5 + effectiveBottomRatio));
-                const cutX = processingLetterBox.x + processingLetterSize * rightCutRatio;
-                const cutY = processingLetterBox.y + processingLetterSize * bottomCutRatio;
-                scissorsCutLines.x = scissorsCutLines.y = 0;
-                scissorsCutLines.regX = scissorsCutLines.regY = 0;
-                scissorsCutLines.scaleX = scissorsCutLines.scaleY = 1;
-                scissorsCutLines.alpha = 1;
-                scissorsCutLines.graphics.clear()
-                    .setStrokeStyle(2 * layout.uiScale)
-                    .setStrokeDash([6 * layout.uiScale, 5 * layout.uiScale], 0)
-                    .beginStroke("#ff0000")
-                    .moveTo(cutX, processingLetterBox.y)
-                    .lineTo(cutX, processingLetterBox.y + processingLetterSize);
-                if (isAxe || isScissors) {
-                    scissorsCutLines.graphics
-                        .moveTo(processingLetterBox.x, cutY)
-                        .lineTo(processingLetterBox.x + processingLetterSize, cutY);
-                }
-                scissorsCutLines.visible = showScissorsCutLines;
-                stage.update();
-            };
-            */
             triggerToolAnimation = toolName => {
                 const step = currentWord.targetSlots[stepIndex];
                 const base = step?.base;
@@ -433,8 +400,8 @@ frame.on("ready", () => {
             stage.addChild(processingLetterInteraction);
             stage.addChild(scissorsCutLines);
             stage.addChild(processingLetterBorder);
-            // DEBUG ONLY: Uncomment to redraw the retained cut-line overlay.
-            // updateScissorsCutLines();
+            // Draw immediately when the configured base matches the selected character.
+            updateScissorsCutLines();
 
             stage.update();
         };
@@ -518,8 +485,12 @@ frame.on("ready", () => {
             onLevelSelect: index => jumpToLevel(index)
         });
 
-        // Keep tool artwork above the rest of the scene, including the info panel.
-        toolArea.displayRefs.forEach(tool => stage.addChild(tool));
+        // Keep tool artwork in a dedicated top layer so later-added characters and
+        // animation effects cannot cover it. Dragging temporarily reparents a tool
+        // to the stage, which also leaves it above the scene while it is held.
+        const toolLayer = new createjs.Container();
+        toolArea.displayRefs.forEach(tool => toolLayer.addChild(tool));
+        stage.addChild(toolLayer);
         stage.update(); // Refresh the stage.
     }).catch(error => {
         console.error("[startup] Game initialization failed:", error);
